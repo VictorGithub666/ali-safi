@@ -1,0 +1,15 @@
+Now the track your page is displaying
+but we need to remove all of the static data 
+and use realistic data
+
+The Order number is not the correct on as from db
+we need the last_location_update(rider table) to be renewed automatically every 30 seconds
+we need to add rider name, profile_pic, phone number, email 
+the rider details need to be authentic from db
+let the download invoice be actually working
+remove share tracking link and set delivery reminder
+let delivery timeline be authentic(order confirmed -> order picked up -> out for delivery -> delivered)
+remove need help section in track order page
+remove delivery instructions in track order page
+remove estimated delivery in track order page
+remove current location in track order page
