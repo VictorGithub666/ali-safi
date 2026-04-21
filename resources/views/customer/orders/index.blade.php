@@ -63,7 +63,7 @@
                                 </div>
                                 <div class="col-md-7">
                                     <div class="mb-2">
-                                        <h5 class="fw-bold mb-1">Order #ORD-{{ $order->id }}</h5>
+                                        <h5 class="fw-bold mb-1">Order #{{ $order->order_number }}</h5>
                                         <p class="text-muted small mb-2">Placed on {{ $order->created_at->format('M d, Y \a\t g:i A') }}</p>
                                     </div>
 
@@ -110,9 +110,6 @@
                                     <h5 class="fw-bold" style="color: var(--primary-green);">KES {{ number_format($order->total, 0) }}</h5>
                                     <p class="small text-muted mb-3">Total Amount</p>
                                     <div class="d-grid gap-2">
-                                        <a href="{{ route('customer.orders.show', $order->id) }}" class="btn btn-sm btn-outline-secondary">
-                                            View Details
-                                        </a>
                                         @if($order->status !== 'cancelled')
                                             <a href="{{ route('customer.orders.track', $order->id) }}" class="btn btn-sm" style="background-color: var(--primary-green); color: white;">
                                                 Track Order
@@ -150,7 +147,7 @@
                                     </div>
                                 </div>
                                 <div class="col-md-7">
-                                    <h5 class="fw-bold mb-1">Order #ORD-{{ $order->id }}</h5>
+                                    <h5 class="fw-bold mb-1">Order #{{ $order->order_number }}</h5>
                                     <p class="text-muted small mb-2">Placed on {{ $order->created_at->format('M d, Y \a\t g:i A') }}</p>
                                     <p class="small text-muted mb-0">
                                         <i class="bi bi-map-pin"></i> {{ $order->ward }}, {{ $order->county }}
@@ -158,11 +155,6 @@
                                 </div>
                                 <div class="col-md-3 text-md-end">
                                     <h5 class="fw-bold" style="color: var(--primary-green);">KES {{ number_format($order->total, 0) }}</h5>
-                                    <div class="d-grid gap-2 mt-2">
-                                        <a href="{{ route('customer.orders.show', $order->id) }}" class="btn btn-sm btn-outline-secondary">
-                                            View Details
-                                        </a>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -187,7 +179,7 @@
                                     </div>
                                 </div>
                                 <div class="col-md-7">
-                                    <h5 class="fw-bold mb-1">Order #ORD-{{ $order->id }}</h5>
+                                    <h5 class="fw-bold mb-1">Order #{{ $order->order_number }}</h5>
                                     <p class="text-muted small mb-2">Placed on {{ $order->created_at->format('M d, Y \a\t g:i A') }}</p>
                                     <p class="small text-muted mb-0">
                                         <i class="bi bi-map-pin"></i> {{ $order->ward }}, {{ $order->county }}
@@ -195,11 +187,6 @@
                                 </div>
                                 <div class="col-md-3 text-md-end">
                                     <h5 class="fw-bold" style="color: var(--primary-green);">KES {{ number_format($order->total, 0) }}</h5>
-                                    <div class="d-grid gap-2 mt-2">
-                                        <a href="{{ route('customer.orders.show', $order->id) }}" class="btn btn-sm btn-outline-secondary">
-                                            View Details
-                                        </a>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -224,7 +211,7 @@
                                     </div>
                                 </div>
                                 <div class="col-md-7">
-                                    <h5 class="fw-bold mb-1">Order #ORD-{{ $order->id }}</h5>
+                                    <h5 class="fw-bold mb-1">Order #{{ $order->order_number }}</h5>
                                     <p class="text-muted small mb-2">Placed on {{ $order->created_at->format('M d, Y \a\t g:i A') }}</p>
                                     <p class="small text-muted mb-0">
                                         <i class="bi bi-map-pin"></i> {{ $order->ward }}, {{ $order->county }}
@@ -232,11 +219,6 @@
                                 </div>
                                 <div class="col-md-3 text-md-end">
                                     <h5 class="fw-bold" style="color: var(--primary-green);">KES {{ number_format($order->total, 0) }}</h5>
-                                    <div class="d-grid gap-2 mt-2">
-                                        <a href="{{ route('customer.orders.show', $order->id) }}" class="btn btn-sm btn-outline-secondary">
-                                            View Details
-                                        </a>
-                                    </div>
                                 </div>
                             </div>
                         </div>

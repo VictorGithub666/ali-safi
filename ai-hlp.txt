@@ -13,3 +13,6 @@ remove need help section in track order page
 remove delivery instructions in track order page
 remove estimated delivery in track order page
 remove current location in track order page
+
+we need to add name, profile_pic, phone, email to the rider table
+those are the details we need to display in track details page

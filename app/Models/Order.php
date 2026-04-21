@@ -28,6 +28,8 @@ class Order extends Model
         'payment_status',
         'payment_method',
         'payment_reference',
+        'phone',
+        'mpesa_number',
         'confirmed_at',
         'prepared_at',
         'picked_up_at',

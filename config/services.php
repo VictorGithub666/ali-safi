@@ -33,6 +33,7 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
 
     'google' => [
         'client_id' => env('GOOGLE_CLIENT_ID'),
@@ -40,6 +41,20 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
         'maps_api_key' => env('GOOGLE_MAPS_API_KEY'),
     ],
+
+    'mpesa' => [
+        'consumer_key' => env('MPESA_CONSUMER_KEY'),
+        'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
+        'business_code' => env('MPESA_BUSINESS_CODE'),
+        'shortcode' => env('MPESA_SHORTCODE'),
+        'passkey' => env('MPESA_PASSKEY'),
+        'command_id' => env('MPESA_COMMAND_ID', 'CustomerPayBillOnline'),
+        'account_reference' => env('MPESA_ACCOUNT_REFERENCE', 'ALISAFI'),
+        'transaction_desc' => env('MPESA_TRANSACTION_DESC', 'Ali-Safi Order Payment'),
+        'sandbox' => env('APP_ENV') !== 'production',
+        'api_url' => env('APP_ENV') === 'production' 
+            ? 'https://api.safaricom.co.ke' 
+            : 'https://sandbox.safaricom.co.ke',
     ],
 
 ];

@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Vendor;
 use App\Models\Cart;
 use App\Services\OrderMatchingService;
+use App\Services\MpesaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,10 +16,12 @@ use Illuminate\Support\Facades\DB;
 class OrderController extends Controller
 {
     protected $matchingService;
+    protected $mpesaService;
 
-    public function __construct(OrderMatchingService $matchingService)
+    public function __construct(OrderMatchingService $matchingService, MpesaService $mpesaService)
     {
         $this->matchingService = $matchingService;
+        $this->mpesaService = $mpesaService;
     }
 
     public function index()
@@ -71,6 +74,7 @@ class OrderController extends Controller
         \Log::info('Cart count (Debug field):', ['count' => $request->input('debug_cart_count')]);
         \Log::info('Authenticated:', ['check' => Auth::check()]);
         
+        // Validate with conditional M-Pesa number validation
         $validated = $request->validate([
             'county' => 'required|string',
             'sub_county' => 'required|string',
@@ -78,8 +82,13 @@ class OrderController extends Controller
             'delivery_address' => 'required|string',
             'delivery_latitude' => 'required|numeric',
             'delivery_longitude' => 'required|numeric',
+            'phone' => 'required|string',
             'payment_method' => 'required|in:cash,mpesa',
+            'mpesa_number' => 'required_if:payment_method,mpesa|nullable|string|regex:/^254\d{9}$/',
             'special_instructions' => 'nullable|string',
+        ], [
+            'mpesa_number.required_if' => 'M-Pesa number is required when selecting M-Pesa payment',
+            'mpesa_number.regex' => 'M-Pesa number must start with 254 and have exactly 12 digits',
         ]);
         
         \Log::info('Validation passed:', $validated);
@@ -154,6 +163,8 @@ class OrderController extends Controller
                     'platform_fee' => $platformFee,
                     'total' => $total,
                     'payment_method' => $request->payment_method,
+                    'phone' => $request->phone,
+                    'mpesa_number' => $request->payment_method === 'mpesa' ? $request->mpesa_number : null,
                     'special_instructions' => $request->special_instructions,
                     'status' => 'pending',
                 ]);
@@ -185,6 +196,11 @@ class OrderController extends Controller
 
                 // TODO: Notify vendor when event is implemented
                 // event(new NewOrderReceived($order, $vendor));
+
+                // Send M-Pesa prompt if payment method is M-Pesa
+                if ($request->payment_method === 'mpesa' && $request->mpesa_number) {
+                    $this->sendMpesaPrompt($order, $request->mpesa_number);
+                }
             }
 
             // Clear cart
@@ -227,7 +243,7 @@ class OrderController extends Controller
             $riderLocation = [
                 'lat' => $order->rider->current_latitude,
                 'lng' => $order->rider->current_longitude,
-                'updated_at' => $order->rider->last_location_update,
+                'updated_at' => $order->rider->last_location_update ?? now(), // Default to now if not set
                 'name' => $order->rider->user->name,
                 'phone' => $order->rider->user->phone,
                 'email' => $order->rider->user->email,
@@ -259,7 +275,7 @@ class OrderController extends Controller
         return response()->json([
             'lat' => $order->rider->current_latitude,
             'lng' => $order->rider->current_longitude,
-            'updated_at' => $order->rider->last_location_update,
+            'updated_at' => $order->rider->last_location_update ? $order->rider->last_location_update->toIso8601String() : null,
             'name' => $order->rider->user->name,
             'phone' => $order->rider->user->phone,
             'email' => $order->rider->user->email,
@@ -393,5 +409,59 @@ class OrderController extends Controller
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
         
         return $earthRadius * $c;
+    }
+
+    protected function sendMpesaPrompt($order, $mpesaNumber)
+    {
+        try {
+            \Log::info('Initiating M-Pesa STK Push', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'mpesa_number' => $mpesaNumber,
+                'amount' => $order->total,
+            ]);
+
+            // Call M-Pesa service to initiate STK Push
+            $result = $this->mpesaService->initiateStkPush(
+                $mpesaNumber,
+                $order->total,
+                $order->order_number
+            );
+
+            if ($result['success']) {
+                \Log::info('M-Pesa STK Push sent successfully', [
+                    'order_id' => $order->id,
+                    'response' => $result['data'],
+                ]);
+
+                // Update order with payment reference
+                $order->update([
+                    'payment_reference' => $result['data']['CheckoutRequestID'] ?? 'MPESA-' . $order->id . '-' . time(),
+                    'payment_status' => 'pending',
+                ]);
+
+                // Notify customer via log (can be extended to send SMS)
+                \Log::info('M-Pesa prompt notification', [
+                    'customer_phone' => $order->phone,
+                    'amount' => $order->total,
+                    'order_number' => $order->order_number,
+                    'message' => "An M-Pesa prompt has been sent to {$mpesaNumber}. Please enter your M-Pesa PIN to complete the payment.",
+                ]);
+
+            } else {
+                \Log::error('Failed to send M-Pesa STK Push', [
+                    'order_id' => $order->id,
+                    'error' => $result['message'],
+                    'details' => $result['error'] ?? null,
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Error in sendMpesaPrompt', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 }

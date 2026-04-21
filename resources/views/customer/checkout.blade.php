@@ -93,6 +93,21 @@
                         <small class="text-muted">e.g., Apt 101, Block A, Nyali Towers</small>
                     </div>
 
+                    <div class="mb-3">
+                        <label for="phone" class="form-label fw-bold">Phone Number <span class="text-danger">*</span></label>
+                        <input type="tel" 
+                               class="form-control @error('phone') is-invalid @enderror" 
+                               id="phone" 
+                               name="phone"
+                               placeholder="e.g., 254712345678 or 0712345678"
+                               value="{{ old('phone', Auth::user()->phone ?? '') }}"
+                               required>
+                        @error('phone')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                        <small class="text-muted">Include country code (254) or local format (07xx)</small>
+                    </div>
+
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label for="delivery_latitude" class="form-label fw-bold">Latitude</label>
@@ -146,7 +161,7 @@
                     <div class="card-body">
                         <div class="mb-3">
                             <div class="form-check">
-                                <input class="form-check-input" 
+                                <input class="form-check-input payment-method-radio" 
                                        type="radio" 
                                        id="payment_cash" 
                                        name="payment_method" 
@@ -160,7 +175,7 @@
                         </div>
                         <div class="mb-3">
                             <div class="form-check">
-                                <input class="form-check-input" 
+                                <input class="form-check-input payment-method-radio" 
                                        type="radio" 
                                        id="payment_mpesa" 
                                        name="payment_method" 
@@ -170,6 +185,28 @@
                                     <strong>M-Pesa</strong>
                                     <div class="text-muted small">Fast and secure mobile payment</div>
                                 </label>
+                            </div>
+                        </div>
+
+                        <!-- M-Pesa Number Input (Hidden by default) -->
+                        <div id="mpesa_section" class="border-top pt-3" style="display: {{ old('payment_method') === 'mpesa' ? 'block' : 'none' }};">
+                            <div class="alert alert-info" role="alert">
+                                <i class="bi bi-info-circle me-2"></i>
+                                <small>Enter your M-Pesa number to complete the payment process. An M-Pesa prompt will be sent to this number for you to confirm the payment.</small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="mpesa_number" class="form-label fw-bold">M-Pesa Number <span class="text-danger">*</span></label>
+                                <input type="tel" 
+                                       class="form-control @error('mpesa_number') is-invalid @enderror" 
+                                       id="mpesa_number" 
+                                       name="mpesa_number"
+                                       placeholder="e.g., 254712345678"
+                                       value="{{ old('mpesa_number') }}"
+                                       {{ old('payment_method') === 'mpesa' ? 'required' : '' }}>
+                                @error('mpesa_number')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                                <small class="text-muted">Must start with 254 (Kenya country code)</small>
                             </div>
                         </div>
                     </div>
@@ -474,6 +511,50 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             })
             .catch(error => console.error('Error loading wards:', error));
+    }
+
+    // Handle M-Pesa payment method visibility and validation
+    const paymentMethodRadios = document.querySelectorAll('.payment-method-radio');
+    const mpesaSection = document.getElementById('mpesa_section');
+    const mpesaInput = document.getElementById('mpesa_number');
+
+    paymentMethodRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'mpesa') {
+                mpesaSection.style.display = 'block';
+                mpesaInput.required = true;
+            } else {
+                mpesaSection.style.display = 'none';
+                mpesaInput.required = false;
+                mpesaInput.value = '';
+            }
+        });
+    });
+
+    // Handle M-Pesa input validation (must start with 254)
+    if (mpesaInput) {
+        mpesaInput.addEventListener('blur', function() {
+            if (this.value && !this.value.startsWith('254')) {
+                this.classList.add('is-invalid');
+                let feedback = this.nextElementSibling || document.createElement('div');
+                if (!feedback.classList.contains('invalid-feedback')) {
+                    feedback.className = 'invalid-feedback';
+                    feedback.textContent = 'M-Pesa number must start with 254';
+                    this.parentElement.appendChild(feedback);
+                }
+            } else {
+                this.classList.remove('is-invalid');
+            }
+        });
+
+        // Also validate on input for real-time feedback
+        mpesaInput.addEventListener('input', function() {
+            if (this.value && !this.value.startsWith('254')) {
+                this.classList.add('is-invalid');
+            } else {
+                this.classList.remove('is-invalid');
+            }
+        });
     }
 });
 </script>

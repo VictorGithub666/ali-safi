@@ -167,7 +167,13 @@
                         <p class="small text-muted mb-0">
                             <i class="bi bi-shield-check"></i> {{ $order->rider->is_verified ? 'Verified & Insured' : 'Pending Verification' }}
                         </p>
-                        <p class="small text-muted mt-2" id="location-update-time">Location updated {{ $riderLocation['updated_at']->diffForHumans() }}</p>
+                        <p class="small text-muted mt-2" id="location-update-time">
+                            @if($riderLocation['updated_at'])
+                                Location updated {{ $riderLocation['updated_at']->diffForHumans() }}
+                            @else
+                                Location tracking not yet started
+                            @endif
+                        </p>
                     @else
                         <p class="text-muted">No rider assigned yet. We'll update you once a rider is assigned to your order.</p>
                     @endif
@@ -218,18 +224,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update location update time
                 const locationUpdateEl = document.getElementById('location-update-time');
                 if (locationUpdateEl) {
-                    const updatedAt = new Date(data.updated_at);
-                    const now = new Date();
-                    const diffMs = now - updatedAt;
-                    const diffMins = Math.floor(diffMs / 60000);
-                    
-                    if (diffMins < 1) {
-                        locationUpdateEl.textContent = 'Location updated now';
-                    } else if (diffMins < 60) {
-                        locationUpdateEl.textContent = `Location updated ${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+                    if (data.updated_at) {
+                        const updatedAt = new Date(data.updated_at);
+                        const now = new Date();
+                        const diffMs = now - updatedAt;
+                        const diffMins = Math.floor(diffMs / 60000);
+                        
+                        if (diffMins < 1) {
+                            locationUpdateEl.textContent = 'Location updated now';
+                        } else if (diffMins < 60) {
+                            locationUpdateEl.textContent = `Location updated ${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+                        } else {
+                            const diffHours = Math.floor(diffMins / 60);
+                            locationUpdateEl.textContent = `Location updated ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                        }
                     } else {
-                        const diffHours = Math.floor(diffMins / 60);
-                        locationUpdateEl.textContent = `Location updated ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                        locationUpdateEl.textContent = 'Location tracking not yet started';
                     }
                 }
                 

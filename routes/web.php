@@ -123,6 +123,9 @@ Route::prefix('api/locations')->group(function () {
 
 require __DIR__.'/auth.php';
 
+// M-Pesa Payment Routes (Webhook - No Auth Required)
+Route::post('/mpesa/callback', [\App\Http\Controllers\PaymentController::class, 'mpesaCallback'])->name('mpesa.callback');
+
 // API routes for mobile apps
 Route::prefix('api/v1')->middleware('auth:sanctum')->group(function () {
     // API endpoints for mobile apps
