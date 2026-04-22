@@ -51,7 +51,13 @@ class ProductController extends Controller
             $validated['image'] = $path;
         }
 
+        // Set base_price and final_price from price field
+        $validated['base_price'] = $request->input('price');
+        $validated['final_price'] = $request->input('price');
         $validated['is_active'] = $request->boolean('is_active', true);
+        
+        // Generate slug
+        $validated['slug'] = \Illuminate\Support\Str::slug($validated['name']);
 
         // Create product
         $product = Product::create($validated);
@@ -118,7 +124,6 @@ class ProductController extends Controller
     {
         $vendor = Auth::user()->vendor;
         
-        // Check if vendor owns this product
         if (!$vendor->products->contains($product->id)) {
             abort(403);
         }
@@ -127,7 +132,6 @@ class ProductController extends Controller
 
         // Handle image upload
         if ($request->hasFile('image')) {
-            // Delete old image
             if ($product->image) {
                 Storage::disk('public')->delete($product->image);
             }
@@ -135,16 +139,23 @@ class ProductController extends Controller
             $validated['image'] = $path;
         }
 
+        // Update prices
+        $validated['base_price'] = $request->input('price');
+        $validated['final_price'] = $request->input('price');
         $validated['is_active'] = $request->boolean('is_active', true);
+        
+        // Update slug if name changed
+        if ($product->name !== $validated['name']) {
+            $validated['slug'] = \Illuminate\Support\Str::slug($validated['name']);
+        }
 
-        // Update product
         $product->update($validated);
 
-        // Update pivot data (stock, availability, custom price)
+        // Update pivot data
         $vendor->products()->updateExistingPivot($product->id, [
             'stock_quantity' => $validated['stock_quantity'],
             'is_available' => $request->boolean('is_available', true),
-            'custom_price' => $validated['custom_price'],
+            'custom_price' => $validated['custom_price'] ?? null,
         ]);
 
         return redirect()
@@ -236,5 +247,27 @@ class ProductController extends Controller
         return response($csv)
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', "attachment; filename=\"$filename\"");
+    }
+
+    /**
+     * Toggle product availability via AJAX
+     */
+    public function toggleAvailability(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'is_available' => 'required|boolean',
+        ]);
+
+        $vendor = Auth::user()->vendor;
+        
+        $vendor->products()->updateExistingPivot($request->product_id, [
+            'is_available' => $request->is_available,
+        ]);
+
+        return response()->json([
+            'success' => true, 
+            'message' => 'Product availability updated successfully'
+        ]);
     }
 }

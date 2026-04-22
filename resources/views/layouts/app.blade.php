@@ -169,7 +169,7 @@
                                     <a class="nav-link" href="{{ route('vendor.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('vendor.products.index') }}"><i class="bi bi-box-seam"></i> Products</a>
+                                    <a class="nav-link" href="{{ route('vendor.products.index') }}"><i class="bi bi-box"></i> Products</a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ route('vendor.orders.index') }}"><i class="bi bi-box"></i> Orders</a>

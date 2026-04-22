@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Product extends Model
 {
@@ -33,6 +34,31 @@ class Product extends Model
         'is_active' => 'boolean',
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+        
+        static::creating(function ($product) {
+            if (empty($product->slug)) {
+                $product->slug = Str::slug($product->name);
+            }
+            // Set final_price same as base_price if not set
+            if (empty($product->final_price) && !empty($product->base_price)) {
+                $product->final_price = $product->base_price;
+            }
+        });
+
+        static::updating(function ($product) {
+            if ($product->isDirty('name') && empty($product->slug)) {
+                $product->slug = Str::slug($product->name);
+            }
+            // Update final_price when base_price changes
+            if ($product->isDirty('base_price')) {
+                $product->final_price = $product->base_price;
+            }
+        });
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);
@@ -45,7 +71,6 @@ class Product extends Model
                     ->withTimestamps();
     }
 
-    // Add this relationship
     public function orders()
     {
         return $this->belongsToMany(Order::class, 'order_items')
@@ -53,10 +78,15 @@ class Product extends Model
                     ->withTimestamps();
     }
 
-    // Add this relationship too
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    // Accessor for price
+    public function getPriceAttribute()
+    {
+        return $this->final_price ?? $this->base_price;
     }
 
     public function getPriceForSize($size)

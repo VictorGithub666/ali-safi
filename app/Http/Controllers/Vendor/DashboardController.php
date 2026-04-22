@@ -17,33 +17,34 @@ class DashboardController extends Controller
         
         // Today's statistics
         $todayOrders = Order::where('vendor_id', $vendor->id)
-                           ->whereDate('created_at', today())
-                           ->count();
-                           
+                       ->whereDate('created_at', today())
+                       ->count();
+                       
         $todayRevenue = Order::where('vendor_id', $vendor->id)
-                            ->whereDate('created_at', today())
-                            ->where('status', 'delivered')
-                            ->sum('subtotal');
+                        ->whereDate('created_at', today())
+                        ->where('status', 'delivered')
+                        ->sum('subtotal');
         
         // Total statistics
         $totalOrders = Order::where('vendor_id', $vendor->id)->count();
         $totalRevenue = Order::where('vendor_id', $vendor->id)
-                            ->where('status', 'delivered')
-                            ->sum('subtotal');
-                            
+                        ->where('status', 'delivered')
+                        ->sum('subtotal');
+                        
         $pendingOrders = Order::where('vendor_id', $vendor->id)
-                             ->whereIn('status', ['pending', 'confirmed', 'preparing'])
-                             ->count();
+                         ->whereIn('status', ['pending', 'confirmed', 'preparing'])
+                         ->count();
 
         $completedOrders = Order::where('vendor_id', $vendor->id)
-                               ->where('status', 'delivered')
-                               ->count();
-                           
+                           ->where('status', 'delivered')
+                           ->count();
+                       
         $recentOrders = Order::where('vendor_id', $vendor->id)
-                            ->with(['customer', 'items.product'])
-                            ->latest()
-                            ->take(10)
-                            ->get();
+                        ->with(['customer'])
+                        ->withCount('items')
+                        ->latest()
+                        ->take(10)
+                        ->get();
                             
         $popularProducts = Product::whereHas('vendors', function($q) use ($vendor) {
                                 $q->where('vendor_id', $vendor->id);
@@ -57,8 +58,8 @@ class DashboardController extends Controller
 
         $totalProducts = $vendor->products()->count();
         $lowStockProducts = $vendor->products()
-                                  ->wherePivot('stock_quantity', '<', 5)
-                                  ->count();
+                              ->wherePivot('stock_quantity', '<', 5)
+                              ->count();
         
         return view('vendor.dashboard', compact(
             'todayOrders',
@@ -103,19 +104,17 @@ class DashboardController extends Controller
 
     public function toggleStatus(Request $request)
     {
-        $request->validate([
-            'is_open' => 'required|boolean',  // Remove vendor_id validation
+        $vendor = Auth::user()->vendor;
+        
+        $vendor->update([
+            'is_open' => !$vendor->is_open
         ]);
 
-        $vendor = Auth::user()->vendor;
-        $vendor->update(['is_open' => $request->is_open]);
-
-        // Redirect back with success message instead of JSON response
         return redirect()
             ->back()
             ->with('success', $vendor->is_open ? 'Shop is now open!' : 'Shop is now closed!');
     }
-    
+
     public function earnings(Request $request)
     {
         $vendor = Auth::user()->vendor;
@@ -124,22 +123,36 @@ class DashboardController extends Controller
         $dateFrom = $request->input('date_from', today()->subDays(30)->format('Y-m-d'));
         $dateTo = $request->input('date_to', today()->format('Y-m-d'));
 
-        $earnings = Order::where('vendor_id', $vendor->id)
-                        ->where('status', 'delivered')
-                        ->whereBetween('created_at', [$dateFrom, $dateTo])
-                        ->selectRaw('DATE(created_at) as date, SUM(subtotal) as total')
-                        ->groupBy('date')
-                        ->get();
+        // Build the query
+        $earningsQuery = Order::where('vendor_id', $vendor->id)
+                            ->where('status', 'delivered')
+                            ->whereBetween('created_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59']);
 
-        $totalEarnings = Order::where('vendor_id', $vendor->id)
-                             ->where('status', 'delivered')
-                             ->whereBetween('created_at', [$dateFrom, $dateTo])
-                             ->sum('subtotal');
+        // Get daily earnings
+        $earnings = (clone $earningsQuery)
+                    ->selectRaw('DATE(created_at) as date, SUM(subtotal) as total')
+                    ->groupBy('date')
+                    ->orderBy('date', 'asc')
+                    ->get();
 
-        $totalOrders = Order::where('vendor_id', $vendor->id)
-                           ->where('status', 'delivered')
-                           ->whereBetween('created_at', [$dateFrom, $dateTo])
-                           ->count();
+        // Get totals
+        $totalEarnings = (clone $earningsQuery)->sum('subtotal');
+        $totalOrders = (clone $earningsQuery)->count();
+
+        // Debug log
+        \Log::info('Vendor Earnings Query', [
+            'vendor_id' => $vendor->id,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'total_earnings' => $totalEarnings,
+            'total_orders' => $totalOrders,
+            'earnings_count' => $earnings->count(),
+            'wallet_balance' => $vendor->wallet_balance,
+            'raw_query' => Order::where('vendor_id', $vendor->id)
+                            ->where('status', 'delivered')
+                            ->whereBetween('created_at', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59'])
+                            ->toSql()
+        ]);
 
         return view('vendor.earnings', compact(
             'earnings',

@@ -35,39 +35,54 @@ class ProfileController extends Controller
         return redirect()->route('profile.edit')->with('success', 'Profile updated successfully');
     }
 
+    /**
+     * Update profile picture - works for ALL user types
+     */
     public function updatePicture(Request $request)
     {
         $request->validate([
-            'profile_picture' => ['required', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
+            'picture' => ['required', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
+        ], [
+            'picture.required' => 'Please select a picture to upload.',
+            'picture.image' => 'The file must be an image.',
+            'picture.mimes' => 'The image must be JPEG, PNG, JPG, or GIF.',
+            'picture.max' => 'The image cannot exceed 2MB.',
         ]);
 
-        $user = auth()->user();
+        try {
+            $user = auth()->user();
 
-        // Delete old picture if exists
-        if ($user->profile_picture && Storage::exists('public/' . $user->profile_picture)) {
-            Storage::delete('public/' . $user->profile_picture);
-        }
+            // Delete old picture if exists
+            if ($user->profile_picture) {
+                Storage::disk('public')->delete($user->profile_picture);
+            }
 
-        // Store new picture
-        if ($request->hasFile('profile_picture')) {
-            $file = $request->file('profile_picture');
-            $filename = 'profile-' . auth()->id() . '-' . time() . '.' . $file->getClientOriginalExtension();
+            // Upload new picture
+            if ($request->hasFile('picture')) {
+                $path = $request->file('picture')->store('profile-pictures', 'public');
+                $user->update(['profile_picture' => $path]);
+                
+                \Log::info('Profile picture updated', [
+                    'user_id' => $user->id,
+                    'user_type' => $user->user_type,
+                    'path' => $path
+                ]);
+            }
 
-            // Optimize and save image
-            $image = Image::read($file);
-            $image->resize(300, 300, function ($constraint) {
-                $constraint->aspectRatio();
-            });
-            
-            $path = 'public/profile-pictures/' . $filename;
-            Storage::put($path, $image->tostring()->toString());
-
-            $user->update([
-                'profile_picture' => 'profile-pictures/' . $filename,
+            return redirect()
+                ->route('profile.edit')
+                ->with('success', 'Profile picture updated successfully!');
+                
+        } catch (\Exception $e) {
+            \Log::error('Profile picture upload failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage()
             ]);
+            
+            return redirect()
+                ->route('profile.edit')
+                ->with('error', 'Failed to upload profile picture. Please try again.');
         }
-
-        return redirect()->route('profile.edit')->with('success', 'Profile picture updated successfully');
     }
 
     public function updatePassword(Request $request)

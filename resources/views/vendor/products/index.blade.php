@@ -156,20 +156,53 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Select all checkbox
-    document.getElementById('selectAll').addEventListener('change', function() {
+    document.getElementById('selectAll')?.addEventListener('change', function() {
         document.querySelectorAll('.product-checkbox').forEach(checkbox => {
             checkbox.checked = this.checked;
         });
     });
 
-    // Availability toggle
+    // Availability toggle with AJAX - using direct URL path
+    const csrfToken = "{{ csrf_token() }}";
+    
     document.querySelectorAll('.availability-toggle').forEach(toggle => {
-        toggle.addEventListener('change', function() {
-            // Add your AJAX call here to update availability
+        toggle.addEventListener('change', async function() {
             const productId = this.dataset.productId;
             const isAvailable = this.checked;
-            console.log('Product:', productId, 'Available:', isAvailable);
-            // You can implement an AJAX call to update this
+            const originalState = this.checked;
+            
+            try {
+                // Use direct URL path instead of route helper
+                const response = await fetch('/vendor/products/toggle-availability', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        product_id: productId,
+                        is_available: isAvailable
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    console.log('Availability updated for product:', productId);
+                } else {
+                    throw new Error(data.message || 'Update failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                // Revert the toggle if there's an error
+                this.checked = !originalState;
+                alert('Failed to update availability. Please try again.');
+            }
         });
     });
 });

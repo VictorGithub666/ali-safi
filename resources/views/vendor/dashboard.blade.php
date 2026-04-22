@@ -90,7 +90,7 @@
                                                     {{ ucfirst($order->status) }}
                                                 </span>
                                             </td>
-                                            <td>KES {{ number_format($order->total_amount, 0) }}</td>
+                                            <td>KES {{ number_format($order->total ?? $order->subtotal, 0) }}</td>
                                             <td>
                                                 <a href="{{ route('vendor.orders.show', $order->id) }}" class="btn btn-primary btn-sm">
                                                     <i class="bi bi-eye"></i> View
@@ -144,6 +144,7 @@
                     </p>
                     <form method="POST" action="{{ route('vendor.toggle-status') }}" class="d-inline">
                         @csrf
+                        @method('POST')
                         <button type="submit" class="btn btn-{{ $isOpen ? 'outline-danger' : 'success' }} btn-sm w-100">
                             <i class="bi bi-{{ $isOpen ? 'lock' : 'unlock' }}"></i> 
                             {{ $isOpen ? 'Close Shop' : 'Open Shop' }}

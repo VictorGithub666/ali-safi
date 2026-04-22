@@ -14,34 +14,55 @@
         </a>
     </div>
 
+    {{-- Wallet Balance Card --}}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 text-white-50">Current Wallet Balance</h6>
+                            <h2 class="mb-0 fw-bold">KES {{ number_format($vendor->wallet_balance ?? 0, 2) }}</h2>
+                        </div>
+                        <div>
+                            <i class="bi bi-wallet2" style="font-size: 3rem; opacity: 0.5;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Summary Cards -->
     <div class="row g-4 mb-5">
         <div class="col-md-4">
-            <div class="card text-center">
+            <div class="card text-center h-100">
                 <div class="card-body">
                     <div class="mb-2" style="font-size: 2rem; color: #05bb14;">
                         <i class="bi bi-cash-stack"></i>
                     </div>
                     <h6 class="text-muted mb-2">Total Earnings</h6>
                     <h3 class="fw-bold mb-0">KES {{ number_format($totalEarnings ?? 0, 2) }}</h3>
+                    <small class="text-muted">from delivered orders</small>
                 </div>
             </div>
         </div>
 
         <div class="col-md-4">
-            <div class="card text-center">
+            <div class="card text-center h-100">
                 <div class="card-body">
                     <div class="mb-2" style="font-size: 2rem; color: #237bdd;">
                         <i class="bi bi-box"></i>
                     </div>
-                    <h6 class="text-muted mb-2">Total Orders</h6>
+                    <h6 class="text-muted mb-2">Completed Orders</h6>
                     <h3 class="fw-bold mb-0">{{ $totalOrders ?? 0 }}</h3>
+                    <small class="text-muted">delivered successfully</small>
                 </div>
             </div>
         </div>
 
         <div class="col-md-4">
-            <div class="card text-center">
+            <div class="card text-center h-100">
                 <div class="card-body">
                     <div class="mb-2" style="font-size: 2rem; color: #28a745;">
                         <i class="bi bi-calculator"></i>
@@ -50,6 +71,7 @@
                     <h3 class="fw-bold mb-0">
                         KES {{ $totalOrders > 0 ? number_format($totalEarnings / $totalOrders, 2) : '0.00' }}
                     </h3>
+                    <small class="text-muted">per delivered order</small>
                 </div>
             </div>
         </div>
@@ -58,7 +80,7 @@
     <!-- Date Filter -->
     <div class="card mb-4">
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
+            <form method="GET" action="{{ route('vendor.earnings') }}" class="row g-3 align-items-end">
                 <div class="col-md-4">
                     <label for="date_from" class="form-label">Date From</label>
                     <input type="date" class="form-control" id="date_from" name="date_from" 
@@ -73,10 +95,50 @@
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="bi bi-filter"></i> Apply Filter
                     </button>
+                    <a href="{{ route('vendor.earnings') }}" class="btn btn-outline-secondary w-100 mt-2">
+                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                    </a>
                 </div>
             </form>
         </div>
     </div>
+
+    {{-- Quick Date Filters --}}
+    <div class="mb-4">
+        <div class="btn-group" role="group">
+            <a href="{{ route('vendor.earnings', ['date_from' => today()->subDays(7)->format('Y-m-d'), 'date_to' => today()->format('Y-m-d')]) }}" 
+               class="btn btn-outline-secondary btn-sm {{ request('date_from') == today()->subDays(7)->format('Y-m-d') ? 'active' : '' }}">
+                Last 7 Days
+            </a>
+            <a href="{{ route('vendor.earnings', ['date_from' => today()->subDays(30)->format('Y-m-d'), 'date_to' => today()->format('Y-m-d')]) }}" 
+               class="btn btn-outline-secondary btn-sm {{ !request('date_from') || request('date_from') == today()->subDays(30)->format('Y-m-d') ? 'active' : '' }}">
+                Last 30 Days
+            </a>
+            <a href="{{ route('vendor.earnings', ['date_from' => today()->startOfMonth()->format('Y-m-d'), 'date_to' => today()->format('Y-m-d')]) }}" 
+               class="btn btn-outline-secondary btn-sm">
+                This Month
+            </a>
+            <a href="{{ route('vendor.earnings', ['date_from' => today()->subMonths(1)->startOfMonth()->format('Y-m-d'), 'date_to' => today()->subMonths(1)->endOfMonth()->format('Y-m-d')]) }}" 
+               class="btn btn-outline-secondary btn-sm">
+                Last Month
+            </a>
+        </div>
+    </div>
+
+    {{-- Debug Information (Remove in production) --}}
+    @if(app()->environment('local'))
+        <div class="alert alert-info alert-dismissible fade show small" role="alert">
+            <strong><i class="bi bi-bug"></i> Debug Info:</strong><br>
+            Vendor ID: {{ $vendor->id }}<br>
+            Business: {{ $vendor->business_name }}<br>
+            Wallet Balance: KES {{ number_format($vendor->wallet_balance ?? 0, 2) }}<br>
+            Total Earnings: KES {{ number_format($totalEarnings ?? 0, 2) }}<br>
+            Completed Orders: {{ $totalOrders ?? 0 }}<br>
+            Date Range: {{ $dateFrom ?? 'N/A' }} to {{ $dateTo ?? 'N/A' }}<br>
+            Earnings Data Count: {{ $earnings->count() ?? 0 }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    @endif
 
     <!-- Earnings Chart -->
     <div class="card mb-4">
@@ -87,12 +149,19 @@
         </div>
         <div class="card-body">
             @if($earnings && $earnings->count() > 0)
-                <canvas id="earningsChart" height="100"></canvas>
+                <div style="height: 300px;">
+                    <canvas id="earningsChart"></canvas>
+                </div>
             @else
-                <p class="text-muted text-center py-5 mb-0">
-                    <i class="bi bi-info-circle me-2"></i>
-                    No earnings data available for the selected period.
-                </p>
+                <div class="text-center py-5">
+                    <i class="bi bi-info-circle" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="text-muted mt-3 mb-0">
+                        No earnings data available for the selected period.
+                    </p>
+                    <small class="text-muted">
+                        Orders must be marked as "Delivered" to appear here.
+                    </small>
+                </div>
             @endif
         </div>
     </div>
@@ -109,7 +178,8 @@
                 <thead class="table-light">
                     <tr>
                         <th>Date</th>
-                        <th>Earnings</th>
+                        <th class="text-end">Orders</th>
+                        <th class="text-end">Earnings</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -120,30 +190,93 @@
                                 <br>
                                 <small class="text-muted">{{ \Carbon\Carbon::parse($earning->date)->format('l') }}</small>
                             </td>
-                            <td>
-                                <strong class="text-success">KES {{ number_format($earning->total, 2) }}</strong>
+                            <td class="text-end">
+                                @php
+                                    $orderCount = \App\Models\Order::where('vendor_id', $vendor->id)
+                                        ->where('status', 'delivered')
+                                        ->whereDate('created_at', $earning->date)
+                                        ->count();
+                                @endphp
+                                <span class="badge bg-secondary">{{ $orderCount }}</span>
+                            </td>
+                            <td class="text-end">
+                                <strong class="text-success">KES {{ number_format($earning->total ?? 0, 2) }}</strong>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="2" class="text-center py-4 text-muted">
-                                <i class="bi bi-info-circle me-2"></i>
-                                No earnings data available for the selected period.
+                            <td colspan="3" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 2rem; color: #ccc;"></i>
+                                <p class="text-muted mt-2 mb-0">
+                                    No earnings data available for the selected period.
+                                </p>
+                                <small class="text-muted">
+                                    Try adjusting the date range or mark orders as delivered.
+                                </small>
                             </td>
                         </tr>
                     @endforelse
                 </tbody>
                 @if($earnings && $earnings->count() > 0)
-                    <tfoot class="table-light">
+                    <tfoot class="table-light fw-bold">
                         <tr>
                             <th>Total</th>
-                            <th class="text-success">KES {{ number_format($totalEarnings, 2) }}</th>
+                            <th class="text-end">{{ $totalOrders }}</th>
+                            <th class="text-end text-success">KES {{ number_format($totalEarnings, 2) }}</th>
                         </tr>
                     </tfoot>
                 @endif
             </table>
         </div>
     </div>
+
+    {{-- Recent Delivered Orders --}}
+    @php
+        $recentDeliveredOrders = \App\Models\Order::where('vendor_id', $vendor->id)
+            ->where('status', 'delivered')
+            ->with(['customer'])
+            ->latest()
+            ->take(5)
+            ->get();
+    @endphp
+
+    @if($recentDeliveredOrders->count() > 0)
+        <div class="card mt-4">
+            <div class="card-header bg-light">
+                <h6 class="mb-0">
+                    <i class="bi bi-check-circle"></i> Recent Delivered Orders
+                </h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Order #</th>
+                            <th>Customer</th>
+                            <th>Date</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($recentDeliveredOrders as $deliveredOrder)
+                            <tr>
+                                <td>
+                                    <a href="{{ route('vendor.orders.show', $deliveredOrder) }}">
+                                        #{{ $deliveredOrder->order_number }}
+                                    </a>
+                                </td>
+                                <td>{{ $deliveredOrder->customer->name ?? 'N/A' }}</td>
+                                <td>{{ $deliveredOrder->delivered_at ? $deliveredOrder->delivered_at->format('M d, Y') : $deliveredOrder->created_at->format('M d, Y') }}</td>
+                                <td class="text-end text-success">
+                                    KES {{ number_format($deliveredOrder->subtotal, 2) }}
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 </div>
 
 @push('scripts')
@@ -160,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
     
-    const data = earningsData.map(item => parseFloat(item.total));
+    const data = earningsData.map(item => parseFloat(item.total || 0));
     
     new Chart(ctx, {
         type: 'line',

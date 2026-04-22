@@ -55,38 +55,55 @@ class ProfileController extends Controller
             ->with('success', 'Profile updated successfully!');
     }
 
-    /**
+        /**
      * Update profile picture
      */
     public function updatePicture(Request $request)
     {
         $request->validate([
             'picture' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ], [
+            'picture.required' => 'Please select a picture to upload.',
+            'picture.image' => 'The file must be an image.',
+            'picture.mimes' => 'The image must be JPEG, PNG, JPG, or GIF.',
+            'picture.max' => 'The image cannot exceed 2MB.',
         ]);
 
-        $user = Auth::user();
+        try {
+            $user = Auth::user();
 
-        // Delete old picture if exists
-        if ($user->profile_picture) {
-            Storage::disk('public')->delete($user->profile_picture);
-        }
+            // Delete old picture if exists
+            if ($user->profile_picture) {
+                Storage::disk('public')->delete($user->profile_picture);
+            }
 
-        // Upload new picture
-        if ($request->hasFile('picture')) {
-            $path = $request->file('picture')->store('profile-pictures', 'public');
+            // Upload new picture
+            if ($request->hasFile('picture')) {
+                $path = $request->file('picture')->store('profile-pictures', 'public');
+                $user->update(['profile_picture' => $path]);
+                
+                \Log::info('Profile picture updated', [
+                    'user_id' => $user->id,
+                    'path' => $path
+                ]);
+            }
+
+            return redirect()
+                ->route('vendor.profile.edit')
+                ->with('success', 'Profile picture updated successfully!');
+                
+        } catch (\Exception $e) {
+            \Log::error('Profile picture upload failed', [
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage()
+            ]);
             
-            // Resize image
-            $image = Image::make(storage_path('app/public/' . $path))
-                ->fit(300, 300)
-                ->save();
-
-            $user->update(['profile_picture' => $path]);
+            return redirect()
+                ->route('vendor.profile.edit')
+                ->with('error', 'Failed to upload profile picture. Please try again.');
         }
-
-        return redirect()
-            ->route('vendor.profile.edit')
-            ->with('success', 'Profile picture updated successfully!');
     }
+
 
     /**
      * Get vendor analytics and stats

@@ -8,7 +8,6 @@ use App\Http\Controllers\Customer\CartController;
 use App\Http\Controllers\Vendor\DashboardController as VendorDashboardController;
 use App\Http\Controllers\Vendor\OrderController as VendorOrderController;
 use App\Http\Controllers\Vendor\ProductController as VendorProductController;
-use App\Http\Controllers\Vendor\ProfileController as VendorProfileController;
 use App\Http\Controllers\Rider\DeliveryController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Auth\SocialiteController;
@@ -64,10 +63,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Dashboard
         Route::get('/dashboard', [VendorDashboardController::class, 'index'])->name('dashboard');
         
-        // Profile & Settings
-        Route::get('/profile', [VendorProfileController::class, 'edit'])->name('profile.edit');
-        Route::patch('/profile', [VendorProfileController::class, 'update'])->name('profile.update');
-        Route::post('/profile/picture', [VendorProfileController::class, 'updatePicture'])->name('profile.picture');
+        
         Route::post('/toggle-status', [VendorDashboardController::class, 'toggleStatus'])->name('toggle-status');
 
         // Products CRUD
@@ -80,6 +76,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/products/{product}', [VendorProductController::class, 'destroy'])->name('products.destroy');
         Route::post('/products/bulk-toggle', [VendorProductController::class, 'bulkToggleAvailability'])->name('products.bulk-toggle');
         Route::get('/products/export/csv', [VendorProductController::class, 'export'])->name('products.export');
+        Route::post('/products/toggle-availability', [VendorProductController::class, 'toggleAvailability'])->name('products.toggle-availability');
         
         // Orders
         Route::get('/orders', [VendorOrderController::class, 'index'])->name('orders.index');

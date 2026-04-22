@@ -14,6 +14,16 @@ class AppServiceProvider extends ServiceProvider
         //
     }
 
+    protected $listen = [
+        Registered::class => [
+            SendEmailVerificationNotification::class,
+        ],
+        
+        OrderPlaced::class => [
+            SendVendorWhatsAppNotification::class,
+        ],
+    ];
+
     /**
      * Bootstrap any application services.
      */
@@ -21,4 +31,14 @@ class AppServiceProvider extends ServiceProvider
     {
         //
     }
+
+     /**
+     * Determine if events and listeners should be automatically discovered.
+     */
+    public function shouldDiscoverEvents(): bool
+    {
+        return false;
+    }
+
+     
 }

@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Vendor;
 use App\Models\Cart;
+use App\Events\OrderPlaced;  
 use App\Services\OrderMatchingService;
 use App\Services\MpesaService;
 use Illuminate\Http\Request;
@@ -196,6 +197,15 @@ class OrderController extends Controller
 
                 // TODO: Notify vendor when event is implemented
                 // event(new NewOrderReceived($order, $vendor));
+                 $order->load(['vendor.user', 'customer', 'items.product']);
+                 event(new OrderPlaced($order));
+
+                 \Log::info('OrderPlaced event dispatched', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'vendor_id' => $vendor->id
+                ]);
+                // =============================================
 
                 // Send M-Pesa prompt if payment method is M-Pesa
                 if ($request->payment_method === 'mpesa' && $request->mpesa_number) {

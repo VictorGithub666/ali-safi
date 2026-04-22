@@ -34,7 +34,6 @@ class UpdateVendorProfileRequest extends FormRequest
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'operating_hours' => 'nullable|array',
-            'picture' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ];
     }
 
