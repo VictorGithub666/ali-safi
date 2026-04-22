@@ -45,6 +45,20 @@ class Product extends Model
                     ->withTimestamps();
     }
 
+    // Add this relationship
+    public function orders()
+    {
+        return $this->belongsToMany(Order::class, 'order_items')
+                    ->withPivot('quantity', 'unit_price', 'size', 'total')
+                    ->withTimestamps();
+    }
+
+    // Add this relationship too
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     public function getPriceForSize($size)
     {
         if ($this->size_prices && isset($this->size_prices[$size])) {

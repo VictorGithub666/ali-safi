@@ -9,7 +9,6 @@ class MpesaService
 {
     private $consumerKey;
     private $consumerSecret;
-    private $businessCode;
     private $shortcode;
     private $passkey;
     private $commandId;
@@ -20,17 +19,14 @@ class MpesaService
 
     public function __construct()
     {
-        $config = config('services.mpesa');
-        
-        $this->consumerKey = $config['consumer_key'];
-        $this->consumerSecret = $config['consumer_secret'];
-        $this->businessCode = $config['business_code'];
-        $this->shortcode = $config['shortcode'];
-        $this->passkey = $config['passkey'];
-        $this->commandId = $config['command_id'];
-        $this->accountReference = $config['account_reference'];
-        $this->transactionDesc = $config['transaction_desc'];
-        $this->apiUrl = $config['api_url'];
+        $this->consumerKey = config('services.mpesa.consumer_key');
+        $this->consumerSecret = config('services.mpesa.consumer_secret');
+        $this->shortcode = config('services.mpesa.shortcode');
+        $this->passkey = config('services.mpesa.passkey');
+        $this->commandId = config('services.mpesa.command_id', 'CustomerPayBillOnline');
+        $this->accountReference = config('services.mpesa.account_reference', 'ALISAFI');
+        $this->transactionDesc = config('services.mpesa.transaction_desc', 'AliSafi Order');
+        $this->apiUrl = config('services.mpesa.api_url', 'https://sandbox.safaricom.co.ke');
     }
 
     /**
@@ -41,11 +37,23 @@ class MpesaService
         try {
             $url = $this->apiUrl . '/oauth/v1/generate?grant_type=client_credentials';
             
+            Log::info('Requesting M-Pesa access token', [
+                'url' => $url,
+                'consumer_key' => substr($this->consumerKey, 0, 10) . '...'
+            ]);
+            
             $response = Http::withBasicAuth($this->consumerKey, $this->consumerSecret)
                 ->get($url);
 
+            Log::info('M-Pesa token response', [
+                'status' => $response->status(),
+                'successful' => $response->successful(),
+                'body' => $response->json()
+            ]);
+
             if ($response->successful()) {
                 $this->accessToken = $response['access_token'];
+                Log::info('M-Pesa access token obtained successfully');
                 return $this->accessToken;
             }
 
@@ -66,15 +74,15 @@ class MpesaService
     /**
      * Initiate STK Push for M-Pesa payment
      */
-    public function initiateStkPush($phoneNumber, $amount, $orderId, $callbackUrl = null)
+    public function initiateStkPush($phoneNumber, $amount, $orderNumber, $callbackUrl = null)
     {
         try {
-            // Validate phone number format
+            // Format and validate phone number
             $phoneNumber = $this->formatPhoneNumber($phoneNumber);
             if (!$phoneNumber) {
                 return [
                     'success' => false,
-                    'message' => 'Invalid phone number format. Must start with 254.',
+                    'message' => 'Invalid phone number format. Must be a valid Safaricom number starting with 254.',
                 ];
             }
 
@@ -83,37 +91,57 @@ class MpesaService
             if (!$token) {
                 return [
                     'success' => false,
-                    'message' => 'Failed to authenticate with M-Pesa API',
+                    'message' => 'Failed to authenticate with M-Pesa API. Check your credentials.',
                 ];
             }
 
-            // Generate timestamp
+            // Generate timestamp in format YYYYMMDDHHmmss
             $timestamp = date('YmdHis');
-
-            // Generate password
+            
+            // Generate password - CRITICAL: Must be Base64(Shortcode + Passkey + Timestamp)
             $password = base64_encode($this->shortcode . $this->passkey . $timestamp);
-
-            // Set default callback URL
+            
+            // Format amount to whole number (M-Pesa doesn't accept decimals in sandbox)
+            $formattedAmount = (string) round($amount);
+            
+            // Set callback URL
             if (!$callbackUrl) {
                 $callbackUrl = route('mpesa.callback');
             }
+            
+            // Ensure callback URL is HTTPS for production
+            if (app()->environment('production') && !str_starts_with($callbackUrl, 'https://')) {
+                $callbackUrl = str_replace('http://', 'https://', $callbackUrl);
+            }
+            
+            // Truncate AccountReference to max 12 characters
+            $accountReference = substr($this->accountReference . '-' . $orderNumber, 0, 12);
+            
+            // Truncate TransactionDesc to max 13 characters
+            $transactionDesc = substr($this->transactionDesc . ' ' . $orderNumber, 0, 13);
 
-            // Prepare STK Push request
+            // Prepare STK Push request according to official documentation
             $url = $this->apiUrl . '/mpesa/stkpush/v1/processrequest';
-
+            
             $payload = [
-                'BusinessShortCode' => $this->shortcode,
+                'BusinessShortCode' => (int) $this->shortcode,
                 'Password' => $password,
                 'Timestamp' => $timestamp,
                 'TransactionType' => $this->commandId,
-                'Amount' => round($amount),
+                'Amount' => $formattedAmount,
                 'PartyA' => $phoneNumber,
-                'PartyB' => $this->businessCode,
+                'PartyB' => (int) $this->shortcode,
                 'PhoneNumber' => $phoneNumber,
                 'CallBackURL' => $callbackUrl,
-                'AccountReference' => $this->accountReference . '-' . $orderId,
-                'TransactionDesc' => $this->transactionDesc . ' ' . $orderId,
+                'AccountReference' => $accountReference,
+                'TransactionDesc' => $transactionDesc,
             ];
+
+            Log::info('M-Pesa STK Push Request', [
+                'url' => $url,
+                'payload' => array_merge($payload, ['Password' => substr($password, 0, 20) . '...']),
+                'token' => substr($token, 0, 20) . '...'
+            ]);
 
             $response = Http::withToken($token)
                 ->withHeaders([
@@ -121,46 +149,80 @@ class MpesaService
                 ])
                 ->post($url, $payload);
 
-            Log::info('M-Pesa STK Push initiated', [
-                'phone' => $phoneNumber,
-                'amount' => $amount,
-                'order_id' => $orderId,
-                'response_status' => $response->status(),
+            $responseData = $response->json();
+            
+            Log::info('M-Pesa STK Push Response', [
+                'status' => $response->status(),
+                'body' => $responseData
             ]);
 
-            if ($response->successful()) {
+            if ($response->successful() && isset($responseData['ResponseCode']) && $responseData['ResponseCode'] == '0') {
                 return [
                     'success' => true,
-                    'message' => 'M-Pesa prompt sent successfully',
-                    'data' => $response->json(),
+                    'message' => 'M-Pesa prompt sent successfully. Please check your phone and enter your PIN.',
+                    'data' => $responseData,
                 ];
             }
 
+            // Handle specific error cases
+            $errorMessage = $responseData['errorMessage'] ?? $responseData['ResponseDescription'] ?? 'Failed to send M-Pesa prompt';
+            
             Log::error('M-Pesa STK Push failed', [
                 'phone' => $phoneNumber,
-                'amount' => $amount,
-                'order_id' => $orderId,
+                'amount' => $formattedAmount,
+                'order_number' => $orderNumber,
                 'status' => $response->status(),
-                'body' => $response->body(),
+                'error' => $errorMessage,
+                'full_response' => $responseData
             ]);
 
             return [
                 'success' => false,
-                'message' => 'Failed to send M-Pesa prompt',
-                'error' => $response->json(),
+                'message' => $errorMessage,
+                'error' => $responseData,
             ];
 
         } catch (\Exception $e) {
             Log::error('Exception in STK Push', [
-                'order_id' => $orderId,
+                'order_number' => $orderNumber,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return [
                 'success' => false,
-                'message' => 'Error processing M-Pesa request',
+                'message' => 'Error processing M-Pesa request: ' . $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Format and validate phone number
+     * Converts to 254XXXXXXXXX format as required by Safaricom
+     */
+    private function formatPhoneNumber($phone)
+    {
+        // Remove any spaces or special characters
+        $phone = preg_replace('/\D/', '', $phone);
+
+        // Handle different formats
+        if (strlen($phone) == 9 && substr($phone, 0, 1) == '7') {
+            // Format: 7XXXXXXXX
+            $phone = '254' . $phone;
+        } elseif (strlen($phone) == 10 && substr($phone, 0, 1) == '0') {
+            // Format: 07XXXXXXXX
+            $phone = '254' . substr($phone, 1);
+        } elseif (strlen($phone) == 10 && substr($phone, 0, 1) == '7') {
+            // Format: 7XXXXXXXXX
+            $phone = '254' . $phone;
+        }
+
+        // Validate final format
+        if (strlen($phone) == 12 && substr($phone, 0, 3) == '254' && substr($phone, 3, 1) == '7') {
+            return $phone;
+        }
+
+        return null;
     }
 
     /**
@@ -180,7 +242,7 @@ class MpesaService
             $url = $this->apiUrl . '/mpesa/stkpushquery/v1/query';
 
             $payload = [
-                'BusinessShortCode' => $this->shortcode,
+                'BusinessShortCode' => (int) $this->shortcode,
                 'Password' => $password,
                 'Timestamp' => $timestamp,
                 'CheckoutRequestID' => $checkoutRequestId,
@@ -204,33 +266,6 @@ class MpesaService
     }
 
     /**
-     * Format and validate phone number
-     * Converts to 254XXXXXXXXX format
-     */
-    private function formatPhoneNumber($phone)
-    {
-        // Remove any spaces or special characters
-        $phone = preg_replace('/\D/', '', $phone);
-
-        // If starts with 0, replace with 254
-        if (strlen($phone) == 10 && substr($phone, 0, 1) == '0') {
-            $phone = '254' . substr($phone, 1);
-        }
-
-        // Must start with 254 and have 12 digits total
-        if (strlen($phone) == 12 && substr($phone, 0, 3) == '254') {
-            return $phone;
-        }
-
-        // If already in 254format but wrong length, return null
-        if (substr($phone, 0, 3) == '254' && strlen($phone) != 12) {
-            return null;
-        }
-
-        return null;
-    }
-
-    /**
      * Handle M-Pesa callback
      */
     public function handleCallback($data)
@@ -238,26 +273,36 @@ class MpesaService
         try {
             Log::info('M-Pesa callback received', $data);
 
-            $result = $data['Body']['stkCallback']['CallbackMetadata']['Item'] ?? [];
+            $stkCallback = $data['Body']['stkCallback'] ?? [];
+            $resultCode = $stkCallback['ResultCode'] ?? null;
+            $resultDesc = $stkCallback['ResultDesc'] ?? null;
+            $merchantRequestId = $stkCallback['MerchantRequestID'] ?? null;
+            $checkoutRequestId = $stkCallback['CheckoutRequestID'] ?? null;
+            
             $metadata = [];
-
-            foreach ($result as $item) {
-                $metadata[$item['Name']] = $item['Value'];
+            if (isset($stkCallback['CallbackMetadata']['Item'])) {
+                foreach ($stkCallback['CallbackMetadata']['Item'] as $item) {
+                    $metadata[$item['Name']] = $item['Value'] ?? null;
+                }
             }
 
             return [
                 'success' => true,
-                'code' => $data['Body']['stkCallback']['ResultCode'],
-                'message' => $data['Body']['stkCallback']['ResultDesc'],
+                'result_code' => $resultCode,
+                'result_desc' => $resultDesc,
+                'merchant_request_id' => $merchantRequestId,
+                'checkout_request_id' => $checkoutRequestId,
                 'amount' => $metadata['Amount'] ?? null,
                 'receipt_number' => $metadata['MpesaReceiptNumber'] ?? null,
                 'transaction_date' => $metadata['TransactionDate'] ?? null,
                 'phone' => $metadata['PhoneNumber'] ?? null,
+                'metadata' => $metadata
             ];
 
         } catch (\Exception $e) {
             Log::error('Error handling M-Pesa callback', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return ['success' => false, 'message' => 'Error processing callback'];

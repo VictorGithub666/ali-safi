@@ -7,6 +7,8 @@ use App\Http\Controllers\Customer\ProductController;
 use App\Http\Controllers\Customer\CartController;
 use App\Http\Controllers\Vendor\DashboardController as VendorDashboardController;
 use App\Http\Controllers\Vendor\OrderController as VendorOrderController;
+use App\Http\Controllers\Vendor\ProductController as VendorProductController;
+use App\Http\Controllers\Vendor\ProfileController as VendorProfileController;
 use App\Http\Controllers\Rider\DeliveryController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Auth\SocialiteController;
@@ -59,17 +61,34 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Vendor routes
     Route::middleware(['user.type:vendor'])->prefix('vendor')->name('vendor.')->group(function () {
+        // Dashboard
         Route::get('/dashboard', [VendorDashboardController::class, 'index'])->name('dashboard');
         
-        Route::get('/orders', [VendorOrderController::class, 'index'])->name('orders');
-        Route::post('/orders/{order}/status', [VendorOrderController::class, 'updateStatus'])->name('orders.status');
-        
-        Route::get('/products', [VendorDashboardController::class, 'products'])->name('products');
-        Route::post('/products/stock', [VendorDashboardController::class, 'updateStock'])->name('products.stock');
-        
+        // Profile & Settings
+        Route::get('/profile', [VendorProfileController::class, 'edit'])->name('profile.edit');
+        Route::patch('/profile', [VendorProfileController::class, 'update'])->name('profile.update');
+        Route::post('/profile/picture', [VendorProfileController::class, 'updatePicture'])->name('profile.picture');
         Route::post('/toggle-status', [VendorDashboardController::class, 'toggleStatus'])->name('toggle-status');
+
+        // Products CRUD
+        Route::get('/products', [VendorProductController::class, 'index'])->name('products.index');
+        Route::get('/products/create', [VendorProductController::class, 'create'])->name('products.create');
+        Route::post('/products', [VendorProductController::class, 'store'])->name('products.store');
+        Route::get('/products/{product}', [VendorProductController::class, 'show'])->name('products.show');
+        Route::get('/products/{product}/edit', [VendorProductController::class, 'edit'])->name('products.edit');
+        Route::patch('/products/{product}', [VendorProductController::class, 'update'])->name('products.update');
+        Route::delete('/products/{product}', [VendorProductController::class, 'destroy'])->name('products.destroy');
+        Route::post('/products/bulk-toggle', [VendorProductController::class, 'bulkToggleAvailability'])->name('products.bulk-toggle');
+        Route::get('/products/export/csv', [VendorProductController::class, 'export'])->name('products.export');
         
+        // Orders
+        Route::get('/orders', [VendorOrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/{order}', [VendorOrderController::class, 'show'])->name('orders.show');
+        Route::patch('/orders/{order}/status', [VendorOrderController::class, 'updateStatus'])->name('orders.update-status');
+        
+        // Earnings & Analytics
         Route::get('/earnings', [VendorDashboardController::class, 'earnings'])->name('earnings');
+        Route::get('/analytics', [VendorDashboardController::class, 'analytics'])->name('analytics');
     });
     
     // Rider routes

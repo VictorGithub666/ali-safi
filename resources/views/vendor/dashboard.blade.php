@@ -62,7 +62,7 @@
                 <div class="card-header bg-light">
                     <div class="d-flex justify-content-between align-items-center">
                         <h6 class="mb-0">Recent Orders</h6>
-                        <a href="{{ route('vendor.orders') }}" class="btn btn-sm btn-outline-primary">View All</a>
+                        <a href="{{ route('vendor.orders.index') }}" class="btn btn-sm btn-outline-primary">View All</a>
                     </div>
                 </div>
                 <div class="card-body">
@@ -92,10 +92,9 @@
                                             </td>
                                             <td>KES {{ number_format($order->total_amount, 0) }}</td>
                                             <td>
-                                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#updateStatusModal" onclick="setOrderId('{{ $order->id }}')">
-                                                    Update Status
-                                                </button>
-                                            </td>
+                                                <a href="{{ route('vendor.orders.show', $order->id) }}" class="btn btn-primary btn-sm">
+                                                    <i class="bi bi-eye"></i> View
+                                                </a>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -115,10 +114,10 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <a href="{{ route('vendor.orders') }}" class="btn btn-primary">
+                        <a href="{{ route('vendor.orders.index') }}" class="btn btn-primary">
                             <i class="bi bi-box"></i> Manage Orders
                         </a>
-                        <a href="{{ route('vendor.products') }}" class="btn btn-outline-primary">
+                        <a href="{{ route('vendor.products.index') }}" class="btn btn-outline-primary">
                             <i class="bi bi-basket"></i> My Products
                         </a>
                         <a href="{{ route('vendor.earnings') }}" class="btn btn-outline-primary">

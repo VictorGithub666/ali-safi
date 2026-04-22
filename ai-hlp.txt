@@ -1,18 +1,139 @@
-Now the track your page is displaying
-but we need to remove all of the static data 
-and use realistic data
+Error while creating Product Internal Server Error
 
-The Order number is not the correct on as from db
-we need the last_location_update(rider table) to be renewed automatically every 30 seconds
-we need to add rider name, profile_pic, phone number, email 
-the rider details need to be authentic from db
-let the download invoice be actually working
-remove share tracking link and set delivery reminder
-let delivery timeline be authentic(order confirmed -> order picked up -> out for delivery -> delivered)
-remove need help section in track order page
-remove delivery instructions in track order page
-remove estimated delivery in track order page
-remove current location in track order page
+Copy as Markdown
+Illuminate\Database\QueryException
+vendor/laravel/framework/src/Illuminate/Database/Connection.php:841
+SQLSTATE[HY000]: General error: 1364 Field 'slug' doesn't have a default value (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: ali-safi, SQL: insert into `products` (`name`, `description`, `category_id`, `image`, `is_active`, `stock_quantity`, `updated_at`, `created_at`) values (6kg -HQ, Best Gas in Nairobi and in Kenya, 1, products/YqyTUXMBHGM9QQ1PwQSM0HEVOLFiHo1hNU3gA1rR.jpg, 1, 100, 2026-04-22 00:56:34, 2026-04-22 00:56:34))
 
-we need to add name, profile_pic, phone, email to the rider table
-those are the details we need to display in track details page
+LARAVEL
+13.5.0
+PHP
+8.3.6
+UNHANDLED
+CODE HY000
+500
+POST
+http://127.0.0.1:8000/vendor/products
+
+Exception trace
+1 previous exception
+15 vendor frames
+
+Illuminate\Database\Eloquent\Model::__callStatic()
+app/Http/Controllers/Vendor/ProductController.php:57
+
+52        }
+53
+54        $validated['is_active'] = $request->boolean('is_active', true);
+55
+56        // Create product
+57        $product = Product::create($validated);
+58
+59        // Attach to vendor with stock quantity
+60        $vendor->products()->attach($product->id, [
+61            'stock_quantity' => $request->input('stock_quantity', 0),
+62            'is_available' => $request->boolean('is_available', true),
+63            'custom_price' => $request->input('custom_price'),
+64        ]);
+65
+66        return redirect()
+67            ->route('vendor.products.show', $product)
+68            ->with('success', 'Product created successfully!');
+69
+6 vendor frames
+
+Illuminate\Pipeline\Pipeline->Illuminate\Pipeline\{closure}()
+app/Http/Middleware/UserType.php:26
+
+47 vendor frames
+
+Illuminate\Foundation\Application->handleRequest()
+public/index.php:20
+
+1 vendor frame
+
+Previous exception
+PDOException
+SQLSTATE[HY000]: General error: 1364 Field 'slug' doesn't have a default value
+
+
+Queries
+1-4 of 4
+mysql
+select * from `users` where `id` = 7 limit 1
+1.77ms
+mysql
+select count(*) as aggregate from `products` where `name` = '6kg -HQ'
+1.02ms
+mysql
+select count(*) as aggregate from `categories` where `id` = '1'
+0.71ms
+mysql
+select * from `vendors` where `vendors`.`user_id` = 7 and `vendors`.`user_id` is not null limit 1
+0.82ms
+Headers
+host
+127.0.0.1:8000
+connection
+keep-alive
+content-length
+32964
+cache-control
+max-age=0
+sec-ch-ua
+"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Linux"
+origin
+http://127.0.0.1:8000
+dnt
+1
+upgrade-insecure-requests
+1
+content-type
+multipart/form-data; boundary=----WebKitFormBoundaryY2iuawMpN1E2kW4n
+user-agent
+Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
+accept
+text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+sec-fetch-site
+same-origin
+sec-fetch-mode
+navigate
+sec-fetch-user
+?1
+sec-fetch-dest
+document
+referer
+http://127.0.0.1:8000/vendor/products/create
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9,id;q=0.8
+cookie
+XSRF-TOKEN=eyJpdiI6IkpUaG9NSEs4bHhMK0dySmJ6R3NiQXc9PSIsInZhbHVlIjoiejFmQXhsMGVZYTg5T0xVRW8xbjAvb2toYkR1SGJWa3Z0bkNOMTRuNmMvZ3lXNnRqWU5ORERnVnVZaWtPUFI3Y29ZQ1IrK3hNejZmTlUzQTd2OWttUG5VZmZWa283VW1lWEJmRnAweEppeFYvbEl2aEZ5ZVg0cHNtRmY2dmd5eUwiLCJtYWMiOiJkNDNkMzFjYTIwNjE1ZmJlNWI2ZWYyZWZhZTgwZTIzNjE3NmY4ZjNlNGY0NTQxM2ZlMDRhNmU1NTFiOTFlMzJhIiwidGFnIjoiIn0%3D; ali-safi-session=eyJpdiI6InY0NzI3MEpHOEQ0ajRQNm9FcWtERUE9PSIsInZhbHVlIjoiOXdYTm5ZMDIzeDBmazJrTmh0cGM1dVZwcVJ2ZHlFOE1oQXA3VGxjZ0M3NmUrS1I2MTFCR29CcVducWRCY2xhdHZqMHRTSWM0enM3RzhpNEVpUmM4L2RhTGFjaEdVYkpURWlKZEZiMnhkaVBvTWZDdGhRbzRsYWN2V2hsRitQdVoiLCJtYWMiOiI2MThiOWNlZTJhMzAxMzlmZDdlNzNhYmZjY2U5NWNlNjZkYmFmY2EwYjJjZGZkNTI5ZDI0ZGQzMDhlMWUxZTk1IiwidGFnIjoiIn0%3D; is4I02coWLqrcg9LWJ8kARaBF7x6SC3tcSTNJQsu=eyJpdiI6ImRSYmhVSWd4VHg4VEwraG4vS3pTb1E9PSIsInZhbHVlIjoiWEZ5M2QzWGErc3I5ZytTUkp4ZzVCRUxUNlI0Y0R5SWlWSnVrQlA2dnZvUFF6bFBqaUhJTzBqZTFWTDJHbVZFYk5KNU0wUFFIWHRmeTRFZDZFa29wSmZPV0pUcWxNRCtaZFkrdHEyTmZ3dENXb2hvRGIwaG42MkdUV2s3SjczdWE4QXdmdmkxTjVIdjkyaGFPekl3Q2l0US9hWFRYa0lBV05RZGtWWWN4MDc1NFRYMERyNmMvaEs0SWwwYTFhUVRBRUlNQ1JnbHdkdVBQSjJyT1R3bm9vZ2FmR01nYlVmN2EwMkE4Q1dFZW05RlhoR1Avd250aWJEdkdBNXdhOVlNUENqZFZxWWM5eC9xa243RS9ZMUFIRVdUSHBzSk9UTEluRncweElHZnF5ZXFGc01URkhDOGxha01yQVNvMW5OWENyb3V0eWEyWGRYMkV4ZVhOZWM5NXJUdE5YVjQzWVRHemhHbE5RVWcxV3BBd256SUwyTmJZRVdjYmxoRGVKZ2xUdVdKZFFHTHlONnRjSVFRYUZFUmVEK0xzME1OdFdrelVGbFA5dkxxRlpaTUlMWlMyMUZzcVpyV0pUM1hmNTRHUkczSWJvYjBsdTk1akpyRTM2YlZwUHVQV251V254QXd6WTdCNVhlRUxndHNScm8zeTZmS2RmeWFPbFlwQ0hsZXByZ2l3ZnVxT3ZFWkg0Um8zdEdpOVVnPT0iLCJtYWMiOiI5NWFhZWRmYWZiZDEwMGQ5MjFmMDQwYzcxOGE2N2ViMDc4Y2RlNmE5MjVhYzBmYjBkNzAwNWUxNGVkOTM5MjZiIiwidGFnIjoiIn0%3D
+Body
+{
+    "_token": "69WM4JDnkSWWy5Gb8MVOQgn0CME21uyPS0zpNlcn",
+    "name": "6kg -HQ",
+    "description": "Best Gas in Nairobi and in Kenya",
+    "category_id": "1",
+    "price": "1200",
+    "stock_quantity": "100",
+    "custom_price": null,
+    "is_available": "1",
+    "is_active": "1",
+    "image": {}
+}
+Routing
+controller
+App\Http\Controllers\Vendor\ProductController@store
+route name
+vendor.products.store
+middleware
+web, auth, verified, user.type:vendor
+Routing parameters
+// No routing parameters
+

@@ -169,7 +169,10 @@
                                     <a class="nav-link" href="{{ route('vendor.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('vendor.orders') }}"><i class="bi bi-box"></i> Orders</a>
+                                    <a class="nav-link" href="{{ route('vendor.products.index') }}"><i class="bi bi-box-seam"></i> Products</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('vendor.orders.index') }}"><i class="bi bi-box"></i> Orders</a>
                                 </li>
                             @elseif(Auth::user()->user_type === 'rider')
                                 <li class="nav-item">
