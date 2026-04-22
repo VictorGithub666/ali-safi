@@ -61,36 +61,51 @@
     @if($products->count())
         <div class="row g-4">
             @foreach($products as $product)
-                <div class="col-md-6 col-lg-4">
-                    <div class="card h-100">
-                        <div class="card-img-top" style="background-color: #f0f0f0; height: 200px; display: flex; align-items: center; justify-content: center;">
-                            @if($product->image)
-                                <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" class="img-fluid" style="max-height: 100%; object-fit: cover;">
-                            @else
+            <div class="col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        @if($product->image)
+                            <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                        @else
+                            <div class="text-center">
                                 <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="text-muted small mt-2 mb-0">No image</p>
+                            </div>
+                        @endif
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">{{ $product->name }}</h5>
+                        <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
+                        
+                        <div class="mb-3">
+                            <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
+                            @php
+                                $vendor = $product->vendors()->first();
+                            @endphp
+                            @if($vendor && $vendor->is_open)
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle"></i> Open
+                                </span>
+                            @else
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-lock"></i> Closed
+                                </span>
                             @endif
                         </div>
-                        <div class="card-body">
-                            <h5 class="card-title">{{ $product->name }}</h5>
-                            <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
-                            
-                            <div class="mb-3">
-                                <span class="badge badge-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
-                            </div>
 
-                            <h6 class="fw-bold mb-3">
-                                KES {{ number_format($product->final_price, 0) }}
-                            </h6>
+                        <h6 class="fw-bold mb-3">
+                            KES {{ number_format($product->final_price, 0) }}
+                        </h6>
 
-                            <div class="d-grid gap-2">
-                                <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
-                                    <i class="bi bi-eye"></i> View Details
-                                </a>
-                            </div>
+                        <div class="d-grid gap-2">
+                            <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
+                                <i class="bi bi-eye"></i> View Details
+                            </a>
                         </div>
                     </div>
                 </div>
-            @endforeach
+            </div>
+        @endforeach
         </div>
 
         <!-- Pagination -->

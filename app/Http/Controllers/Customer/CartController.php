@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\Product;
+use App\Models\Vendor;
 use Illuminate\Http\Request;
 
 class CartController extends Controller
@@ -34,19 +35,71 @@ class CartController extends Controller
             'size' => ['nullable', 'string'],
         ]);
 
-        $product = Product::find($validated['product_id']);
+        // Check if vendor is open
+        $vendor = Vendor::find($validated['vendor_id']);
+        if (!$vendor || !$vendor->is_open) {
+            return redirect()->back()->with('error', 'This shop is currently closed and not accepting orders.');
+        }
+
+        // Check if product exists and is active
+        $product = Product::where('id', $validated['product_id'])
+            ->where('is_active', true)
+            ->first();
+            
+        if (!$product) {
+            return redirect()->back()->with('error', 'This product is not available.');
+        }
+
+        // Check if vendor has this product and it's available
+        $vendorProduct = $vendor->products()
+            ->where('product_id', $validated['product_id'])
+            ->where('is_available', true)
+            ->first();
+            
+        if (!$vendorProduct) {
+            return redirect()->back()->with('error', 'This product is not available from this vendor.');
+        }
+
+        // Check stock
+        if ($vendorProduct->pivot->stock_quantity < $validated['quantity']) {
+            return redirect()->back()->with('error', 'Insufficient stock available.');
+        }
+
         $price = $product->getPriceForSize($validated['size'] ?? null);
+        
+        // Use custom vendor price if set
+        if ($vendorProduct->pivot->custom_price) {
+            $price = $vendorProduct->pivot->custom_price;
+        }
 
-        Cart::create([
-            'user_id' => auth()->id(),
-            'product_id' => $validated['product_id'],
-            'vendor_id' => $validated['vendor_id'],
-            'quantity' => $validated['quantity'],
-            'size' => $validated['size'] ?? null,
-            'price' => $price,
-        ]);
+        // Check if product already in cart
+        $existingCartItem = Cart::where('user_id', auth()->id())
+            ->where('product_id', $validated['product_id'])
+            ->where('vendor_id', $validated['vendor_id'])
+            ->where('size', $validated['size'] ?? null)
+            ->first();
 
-        return redirect()->back()->with('success', 'Product added to cart');
+        if ($existingCartItem) {
+            $existingCartItem->increment('quantity', $validated['quantity']);
+            $message = 'Product quantity updated in cart';
+        } else {
+            Cart::create([
+                'user_id' => auth()->id(),
+                'product_id' => $validated['product_id'],
+                'vendor_id' => $validated['vendor_id'],
+                'quantity' => $validated['quantity'],
+                'size' => $validated['size'] ?? null,
+                'price' => $price,
+            ]);
+            $message = 'Product added to cart';
+        }
+
+        // Handle Buy Now flag
+        if ($request->input('buy_now') === '1') {
+            return redirect()->route('customer.checkout');
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     public function update(Request $request)
@@ -61,6 +114,11 @@ class CartController extends Controller
         
         if ($cartItem->user_id !== auth()->id()) {
             abort(403);
+        }
+
+        // Check vendor is still open
+        if (!$cartItem->vendor->is_open) {
+            return redirect()->back()->with('error', 'This shop is currently closed. You cannot update items from this shop.');
         }
 
         if ($request->input('action') === 'increase') {

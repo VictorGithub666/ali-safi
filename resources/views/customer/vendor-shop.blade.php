@@ -22,8 +22,15 @@
                                 <span class="text-muted">({{ $vendor->reviews_count ?? '0' }} ratings)</span>
                             </div>
                             <div>
-                                <i class="bi bi-geo-alt"></i>
-                                <span class="text-muted">Online</span>
+                                @if($vendor->is_open)
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i> Shop Open
+                                    </span>
+                                @else
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-lock"></i> Shop Closed
+                                    </span>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -48,10 +55,18 @@
             @foreach($products as $product)
                 <div class="col-md-6 col-lg-4 col-xl-3">
                     <div class="card border-0 shadow-sm h-100" style="transition: transform 0.2s;">
-                        <div class="bg-light d-flex align-items-center justify-content-center" style="height: 200px;">
-                            <svg class="mb-3" width="60" height="60" fill="#ccc" viewBox="0 0 24 24">
-                                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75 3.54-1.3-1.54c-.3-.36-.77-.36-1.06 0l-3.63 4.36V7h13v10h-5.26z"/>
-                            </svg>
+                        {{-- In the product card loop --}}
+                        <div class="bg-light d-flex align-items-center justify-content-center" style="height: 200px; overflow: hidden;">
+                            @if($product->image)
+                                <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                            @else
+                                <div class="text-center">
+                                    <svg width="60" height="60" fill="#ccc" viewBox="0 0 24 24">
+                                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75 3.54-1.3-1.54c-.3-.36-.77-.36-1.06 0l-3.63 4.36V7h13v10h-5.26z"/>
+                                    </svg>
+                                    <p class="text-muted small mt-2 mb-0">No image</p>
+                                </div>
+                            @endif
                         </div>
                         <div class="card-body">
                             <h6 class="fw-bold mb-2" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">

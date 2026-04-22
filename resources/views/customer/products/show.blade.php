@@ -12,35 +12,24 @@
     <div class="row g-4">
         <!-- Product Image -->
         <div class="col-md-5">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body p-0">
-                    <div class="bg-light d-flex align-items-center justify-content-center" style="height: 400px;">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-0">
+                <div class="bg-light d-flex align-items-center justify-content-center" style="height: 400px; overflow: hidden;">
+                    @if($product->image)
+                        <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    @else
                         <div class="text-center">
                             <svg class="mb-3" width="80" height="80" fill="#ccc" viewBox="0 0 24 24">
                                 <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75 3.54-1.3-1.54c-.3-.36-.77-.36-1.06 0l-3.63 4.36V7h13v10h-5.26z"/>
                             </svg>
-                            <p class="text-muted mb-0">Product Image</p>
+                            <p class="text-muted mb-0">No Product Image</p>
                         </div>
-                    </div>
+                    @endif
                 </div>
             </div>
+        </div>
 
-            <!-- Image Gallery Placeholder -->
-            <div class="row g-2 mt-3">
-                <div class="col-3">
-                    <div class="bg-light p-2 rounded" style="height: 80px; cursor: pointer; border: 2px solid var(--primary-green);">
-                    </div>
-                </div>
-                <div class="col-3">
-                    <div class="bg-light p-2 rounded" style="height: 80px; cursor: pointer;"></div>
-                </div>
-                <div class="col-3">
-                    <div class="bg-light p-2 rounded" style="height: 80px; cursor: pointer;"></div>
-                </div>
-                <div class="col-3">
-                    <div class="bg-light p-2 rounded" style="height: 80px; cursor: pointer;"></div>
-                </div>
-            </div>
+            
         </div>
 
         <!-- Product Details -->

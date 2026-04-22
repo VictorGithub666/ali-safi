@@ -52,7 +52,18 @@ class OrderController extends Controller
 
         if ($cartItems->isEmpty()) {
             return redirect()->route('customer.products.index')
-                           ->with('error', 'Your cart is empty');
+                        ->with('error', 'Your cart is empty');
+        }
+
+        // Check if any vendor is closed
+        $closedVendors = $cartItems->filter(function($item) {
+            return !$item->vendor->is_open;
+        });
+
+        if ($closedVendors->isNotEmpty()) {
+            $vendorNames = $closedVendors->pluck('vendor.business_name')->unique()->join(', ');
+            return redirect()->route('customer.cart')
+                        ->with('error', "The following shops are currently closed: {$vendorNames}. Please remove their items to proceed.");
         }
 
         $total = $cartItems->sum(function($item) {
@@ -66,7 +77,16 @@ class OrderController extends Controller
     }
 
     public function store(Request $request)
-    {
+    {   
+        foreach ($itemsByVendor as $vendorId => $items) {
+            $vendor = Vendor::findOrFail($vendorId);
+            
+            // Check if vendor is open
+            if (!$vendor->is_open) {
+                DB::rollBack();
+                return back()->with('error', $vendor->business_name . ' is currently closed and cannot accept orders. Please remove their items from your cart.');
+            }
+
         // Log incoming request
         \Log::info('=== ORDER STORE STARTED ===');
         \Log::info('Request Data:', $request->all());
@@ -234,6 +254,8 @@ class OrderController extends Controller
             ]);
             return back()->with('error', 'Failed to place order. Please try again.');
         }
+    }
+    
     }
 
     public function track(Order $order)

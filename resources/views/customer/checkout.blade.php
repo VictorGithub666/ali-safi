@@ -240,6 +240,18 @@
                         <div class="mb-4" style="max-height: 300px; overflow-y: auto;">
                             @foreach($cartItems as $item)
                                 <div class="d-flex justify-content-between mb-3 pb-3 border-bottom small">
+                                    {{-- In the checkout order items loop --}}
+                                        <div class="col-md-2">
+                                            <div class="bg-light rounded p-2" style="height: 100px; overflow: hidden;">
+                                                @if($item->product->image)
+                                                    <img src="{{ asset('storage/' . $item->product->image) }}" alt="{{ $item->product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                                                @else
+                                                    <div class="text-center">
+                                                        <i class="bi bi-image" style="font-size: 1.5rem; color: #ccc;"></i>
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        </div>
                                     <div>
                                         <p class="mb-1"><strong>{{ $item->product->name }}</strong></p>
                                         <p class="text-muted mb-0">

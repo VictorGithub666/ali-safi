@@ -56,11 +56,20 @@
                     <div class="card border-0 shadow-sm mb-4">
                         <div class="card-body">
                             <div class="row g-3">
+                                {{-- In the order card loop --}}
                                 <div class="col-md-2">
-                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center;">
-                                        <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                        @php
+                                            $firstItem = $order->items->first();
+                                        @endphp
+                                        @if($firstItem && $firstItem->product->image)
+                                            <img src="{{ asset('storage/' . $firstItem->product->image) }}" alt="{{ $firstItem->product->name }}" style="width: 100%; height: 100%; object-fit: fill;">
+                                        @else
+                                            <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                        @endif
                                     </div>
                                 </div>
+                                
                                 <div class="col-md-7">
                                     <div class="mb-2">
                                         <h5 class="fw-bold mb-1">Order #{{ $order->order_number }}</h5>
@@ -142,8 +151,15 @@
                         <div class="card-body">
                             <div class="row g-3">
                                 <div class="col-md-2">
-                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center;">
-                                        <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                        @php
+                                            $firstItem = $order->items->first();
+                                        @endphp
+                                        @if($firstItem && $firstItem->product->image)
+                                            <img src="{{ asset('storage/' . $firstItem->product->image) }}" alt="{{ $firstItem->product->name }}" style="width: 100%; height: 100%; object-fit: fill;">
+                                        @else
+                                            <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                        @endif
                                     </div>
                                 </div>
                                 <div class="col-md-7">
@@ -174,8 +190,15 @@
                         <div class="card-body">
                             <div class="row g-3">
                                 <div class="col-md-2">
-                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center;">
-                                        <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                        @php
+                                            $firstItem = $order->items->first();
+                                        @endphp
+                                        @if($firstItem && $firstItem->product->image)
+                                            <img src="{{ asset('storage/' . $firstItem->product->image) }}" alt="{{ $firstItem->product->name }}" style="width: 100%; height: 100%; object-fit: fill;">
+                                        @else
+                                            <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                        @endif
                                     </div>
                                 </div>
                                 <div class="col-md-7">
@@ -206,8 +229,15 @@
                         <div class="card-body">
                             <div class="row g-3">
                                 <div class="col-md-2">
-                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center;">
-                                        <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                    <div class="bg-light rounded p-3" style="height: 100px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                        @php
+                                            $firstItem = $order->items->first();
+                                        @endphp
+                                        @if($firstItem && $firstItem->product->image)
+                                            <img src="{{ asset('storage/' . $firstItem->product->image) }}" alt="{{ $firstItem->product->name }}" style="width: 100%; height: 100%; object-fit: fill;">
+                                        @else
+                                            <p class="text-muted small text-center mb-0">{{ $order->items->count() }} item{{ $order->items->count() !== 1 ? 's' : '' }}</p>
+                                        @endif
                                     </div>
                                 </div>
                                 <div class="col-md-7">
