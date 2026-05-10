@@ -99,7 +99,7 @@
                                                 <small class="text-muted">{{ $delivery->ward }}, {{ $delivery->sub_county }}</small>
                                             </td>
                                             <td>
-                                                <span class="badge badge-info">{{ ucfirst($delivery->status) }}</span>
+                                                <span class="badge bg-info">{{ ucfirst($delivery->status) }}</span>
                                             </td>
                                             <td>
                                                 <button type="button" class="btn btn-sm btn-outline-primary" 
@@ -110,7 +110,7 @@
                                         </tr>
                                     @endforeach
                                 </tbody>
-                            </table>
+                            <tr>
                         </div>
                     @else
                         <div class="alert alert-info mb-0">
@@ -265,6 +265,7 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 function acceptOrder(orderId) {
     if ({{ $rider->is_available ? 'true' : 'false' }}) {
@@ -305,8 +306,20 @@ function acceptOrder(orderId) {
 }
 
 function toggleAvailability() {
+    // Disable button to prevent multiple clicks
     const btn = document.getElementById('availabilityBtn');
-    const isAvailable = btn.textContent.includes('Available');
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    
+    // Show loading state
+    Swal.fire({
+        title: 'Updating Status...',
+        text: 'Please wait',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
     
     fetch('/rider/toggle-availability', {
         method: 'POST',
@@ -317,19 +330,56 @@ function toggleAvailability() {
     }).then(response => response.json())
       .then(data => {
           if (data.success) {
+              // Close the loading Swal
+              Swal.close();
+              
+              // Show success message
               Swal.fire({
-                  title: 'Updated!',
-                  text: data.message,
+                  title: data.message,
+                  text: 'Page will refresh now...',
                   icon: 'success',
-                  confirmButtonColor: '#05bb14'
-              }).then(() => location.reload());
+                  confirmButtonColor: '#05bb14',
+                  timer: 1500,
+                  showConfirmButton: false
+              }).then(() => {
+                  // Refresh the page after success
+                  location.reload();
+              });
+          } else {
+              btn.disabled = false;
+              btn.style.opacity = '1';
+              Swal.fire('Error', data.message || 'Failed to update status', 'error');
           }
+      })
+      .catch(error => {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          console.error('Error:', error);
+          Swal.fire('Error', 'An error occurred. Please try again.', 'error');
       });
 }
 
 function showDeliveryDetails(orderId) {
-    // This will navigate to delivery details page
     window.location.href = `/rider/deliveries/${orderId}`;
 }
+
+// Auto-refresh available orders every 30 seconds (optional)
+setInterval(function() {
+    if (document.hasFocus()) {
+        fetch(window.location.href)
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newAvailableCount = doc.querySelector('.badge.bg-success')?.textContent || '0';
+                const currentAvailableCount = document.querySelector('.badge.bg-success')?.textContent || '0';
+                
+                if (newAvailableCount !== currentAvailableCount) {
+                    location.reload();
+                }
+            })
+            .catch(console.error);
+    }
+}, 30000);
 </script>
 @endsection

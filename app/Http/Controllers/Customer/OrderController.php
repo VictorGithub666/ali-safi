@@ -78,21 +78,10 @@ class OrderController extends Controller
 
     public function store(Request $request)
     {   
-        foreach ($itemsByVendor as $vendorId => $items) {
-            $vendor = Vendor::findOrFail($vendorId);
-            
-            // Check if vendor is open
-            if (!$vendor->is_open) {
-                DB::rollBack();
-                return back()->with('error', $vendor->business_name . ' is currently closed and cannot accept orders. Please remove their items from your cart.');
-            }
-
         // Log incoming request
         \Log::info('=== ORDER STORE STARTED ===');
         \Log::info('Request Data:', $request->all());
         \Log::info('User ID:', ['id' => Auth::id()]);
-        \Log::info('User ID (Debug field):', ['id' => $request->input('debug_user_id')]);
-        \Log::info('Cart count (Debug field):', ['count' => $request->input('debug_cart_count')]);
         \Log::info('Authenticated:', ['check' => Auth::check()]);
         
         // Validate with conditional M-Pesa number validation
@@ -124,20 +113,17 @@ class OrderController extends Controller
 
         // Query cart
         $cartItems = Cart::where('user_id', $userId)
-                        ->with('product')
+                        ->with(['product', 'vendor'])
                         ->get();
 
         \Log::info('Cart query executed', [
             'user_id' => $userId,
             'cart_count' => $cartItems->count(),
-            'total_carts_in_db' => Cart::count(),
         ]);
 
         if ($cartItems->isEmpty()) {
             \Log::warning('CART EMPTY ERROR', [
                 'user_id' => $userId,
-                'all_user_carts' => Cart::where('user_id', $userId)->count(),
-                'all_carts' => Cart::all()->pluck('user_id')->toArray(),
             ]);
             return back()->with('error', 'Your cart is empty');
         }
@@ -150,11 +136,19 @@ class OrderController extends Controller
             $itemsByVendor = $cartItems->groupBy('vendor_id');
             \Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
             
+            $orders = []; // Store created orders for response
+            
             foreach ($itemsByVendor as $vendorId => $items) {
                 \Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
                 
                 $vendor = Vendor::findOrFail($vendorId);
                 \Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
+                
+                // Check if vendor is open
+                if (!$vendor->is_open) {
+                    DB::rollBack();
+                    return back()->with('error', $vendor->business_name . ' is currently closed and cannot accept orders. Please remove their items from your cart.');
+                }
                 
                 // Calculate totals
                 $subtotal = $items->sum(function($item) {
@@ -190,7 +184,7 @@ class OrderController extends Controller
                     'status' => 'pending',
                 ]);
                 
-                \Log::info('Order created successfully', ['order_id' => $order->id]);
+                \Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
 
                 // Create order items
                 foreach ($items as $cartItem) {
@@ -206,31 +200,41 @@ class OrderController extends Controller
                 
                 \Log::info('Order items created successfully', ['order_id' => $order->id]);
 
-                // Match with nearest available rider
+                // Match with nearest available rider based on vendor location
                 $rider = $this->matchingService->findNearestRider($vendor);
                 if ($rider) {
                     $order->update(['rider_id' => $rider->id]);
-                    \Log::info('Rider assigned', ['order_id' => $order->id, 'rider_id' => $rider->id]);
-                    // TODO: Notify rider when event is implemented
-                    // event(new NewOrderAssigned($order, $rider));
+                    \Log::info('Rider assigned', [
+                        'order_id' => $order->id, 
+                        'rider_id' => $rider->id,
+                        'rider_name' => $rider->user->name,
+                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude,
+                        'rider_location' => $rider->current_latitude . ',' . $rider->current_longitude
+                    ]);
+                } else {
+                    \Log::warning('No rider available for assignment', [
+                        'order_id' => $order->id,
+                        'vendor_id' => $vendor->id,
+                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude
+                    ]);
                 }
 
-                // TODO: Notify vendor when event is implemented
-                // event(new NewOrderReceived($order, $vendor));
-                 $order->load(['vendor.user', 'customer', 'items.product']);
-                 event(new OrderPlaced($order));
+                // Dispatch OrderPlaced event
+                $order->load(['vendor.user', 'customer', 'items.product']);
+                event(new OrderPlaced($order));
 
-                 \Log::info('OrderPlaced event dispatched', [
+                \Log::info('OrderPlaced event dispatched', [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
                     'vendor_id' => $vendor->id
                 ]);
-                // =============================================
 
                 // Send M-Pesa prompt if payment method is M-Pesa
                 if ($request->payment_method === 'mpesa' && $request->mpesa_number) {
                     $this->sendMpesaPrompt($order, $request->mpesa_number);
                 }
+                
+                $orders[] = $order;
             }
 
             // Clear cart
@@ -252,10 +256,8 @@ class OrderController extends Controller
                 'error_line' => $e->getLine(),
                 'error_trace' => $e->getTraceAsString(),
             ]);
-            return back()->with('error', 'Failed to place order. Please try again.');
+            return back()->with('error', 'Failed to place order. Please try again. Error: ' . $e->getMessage());
         }
-    }
-    
     }
 
     public function track(Order $order)
@@ -275,7 +277,7 @@ class OrderController extends Controller
             $riderLocation = [
                 'lat' => $order->rider->current_latitude,
                 'lng' => $order->rider->current_longitude,
-                'updated_at' => $order->rider->last_location_update ?? now(), // Default to now if not set
+                'updated_at' => $order->rider->last_location_update ?? now(),
                 'name' => $order->rider->user->name,
                 'phone' => $order->rider->user->phone,
                 'email' => $order->rider->user->email,
@@ -333,8 +335,6 @@ class OrderController extends Controller
             'items' => $order->items,
         ];
 
-        // Generate PDF using a simple HTML-to-PDF approach
-        // For now, we'll return a view that can be printed to PDF
         return view('customer.orders.invoice', $data);
     }
 
@@ -351,11 +351,20 @@ class OrderController extends Controller
                 'completed' => true
             ];
         } elseif ($order->created_at) {
-            // If not explicitly confirmed, use created time
             $timeline[] = [
                 'status' => 'Order Confirmed',
                 'time' => $order->created_at,
                 'icon' => 'bi bi-check-circle',
+                'completed' => true
+            ];
+        }
+
+        // Order Prepared
+        if ($order->prepared_at) {
+            $timeline[] = [
+                'status' => 'Order Prepared',
+                'time' => $order->prepared_at,
+                'icon' => 'bi bi-box-seam',
                 'completed' => true
             ];
         }
@@ -365,26 +374,8 @@ class OrderController extends Controller
             $timeline[] = [
                 'status' => 'Order Picked Up',
                 'time' => $order->picked_up_at,
-                'icon' => 'bi bi-box-seam',
+                'icon' => 'bi bi-truck',
                 'completed' => true
-            ];
-        }
-
-        // Out for Delivery (In Transit)
-        if ($order->status === 'in_transit') {
-            $timeline[] = [
-                'status' => 'Out for Delivery',
-                'time' => now(),
-                'icon' => 'bi bi-truck',
-                'completed' => false
-            ];
-        } elseif ($order->picked_up_at && !$order->delivered_at) {
-            // If picked up but not delivered, it's in transit
-            $timeline[] = [
-                'status' => 'Out for Delivery',
-                'time' => now(),
-                'icon' => 'bi bi-truck',
-                'completed' => false
             ];
         }
 
@@ -401,9 +392,9 @@ class OrderController extends Controller
         // If no timeline events yet, show order confirmed as pending
         if (empty($timeline) && $order->created_at) {
             $timeline[] = [
-                'status' => 'Order Confirmed',
+                'status' => 'Order Placed',
                 'time' => $order->created_at,
-                'icon' => 'bi bi-check-circle',
+                'icon' => 'bi bi-clock',
                 'completed' => false
             ];
         }
@@ -413,6 +404,15 @@ class OrderController extends Controller
 
     protected function calculateDeliveryFee($vendor, $customerLat, $customerLng)
     {
+        // Check if vendor has coordinates
+        if (!$vendor->latitude || !$vendor->longitude) {
+            \Log::warning('Vendor missing coordinates for delivery fee calculation', [
+                'vendor_id' => $vendor->id,
+                'business_name' => $vendor->business_name
+            ]);
+            return 100; // Default delivery fee
+        }
+        
         $distance = $this->calculateDistance(
             $vendor->latitude,
             $vendor->longitude,
@@ -424,7 +424,15 @@ class OrderController extends Controller
         $baseFee = 50;
         $perKmRate = 20;
         
-        return $baseFee + ($distance * $perKmRate);
+        $deliveryFee = $baseFee + ($distance * $perKmRate);
+        
+        \Log::info('Delivery fee calculated', [
+            'vendor_id' => $vendor->id,
+            'distance_km' => round($distance, 2),
+            'delivery_fee' => round($deliveryFee, 2)
+        ]);
+        
+        return round($deliveryFee);
     }
 
     protected function calculateDistance($lat1, $lon1, $lat2, $lon2)
@@ -453,7 +461,6 @@ class OrderController extends Controller
                 'amount' => $order->total,
             ]);
 
-            // Call M-Pesa service to initiate STK Push
             $result = $this->mpesaService->initiateStkPush(
                 $mpesaNumber,
                 $order->total,
@@ -466,25 +473,15 @@ class OrderController extends Controller
                     'response' => $result['data'],
                 ]);
 
-                // Update order with payment reference
                 $order->update([
                     'payment_reference' => $result['data']['CheckoutRequestID'] ?? 'MPESA-' . $order->id . '-' . time(),
                     'payment_status' => 'pending',
-                ]);
-
-                // Notify customer via log (can be extended to send SMS)
-                \Log::info('M-Pesa prompt notification', [
-                    'customer_phone' => $order->phone,
-                    'amount' => $order->total,
-                    'order_number' => $order->order_number,
-                    'message' => "An M-Pesa prompt has been sent to {$mpesaNumber}. Please enter your M-Pesa PIN to complete the payment.",
                 ]);
 
             } else {
                 \Log::error('Failed to send M-Pesa STK Push', [
                     'order_id' => $order->id,
                     'error' => $result['message'],
-                    'details' => $result['error'] ?? null,
                 ]);
             }
 
@@ -492,7 +489,6 @@ class OrderController extends Controller
             \Log::error('Error in sendMpesaPrompt', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
         }
     }
