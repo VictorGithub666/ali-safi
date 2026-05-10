@@ -65,6 +65,31 @@
         </div>
     </div>
 
+    <!-- Location Status Indicator -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-geo-alt-fill" style="color: var(--primary-green);"></i>
+                            <span id="locationStatusText" class="small ms-2">
+                                @if($rider->is_available)
+                                    <span class="text-success">📍 Location tracking active - Updating every 10 seconds</span>
+                                @else
+                                    <span class="text-muted">📍 Location tracking paused (Go online to start tracking)</span>
+                                @endif
+                            </span>
+                        </div>
+                        <div>
+                            <span id="lastUpdateTime" class="small text-muted"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <!-- Active Deliveries -->
         <div class="col-md-8">
@@ -110,7 +135,7 @@
                                         </tr>
                                     @endforeach
                                 </tbody>
-                            <tr>
+                            </table>
                         </div>
                     @else
                         <div class="alert alert-info mb-0">
@@ -186,6 +211,9 @@
                         <a href="{{ route('profile.edit') }}" class="btn btn-outline-primary">
                             <i class="bi bi-person"></i> My Profile
                         </a>
+                        <button class="btn btn-outline-primary" onclick="updateLocationManually()">
+                            <i class="bi bi-geo-alt"></i> Update Location Now
+                        </button>
                         <a href="#" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#supportModal">
                             <i class="bi bi-question-circle"></i> Get Help
                         </a>
@@ -267,51 +295,191 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-function acceptOrder(orderId) {
-    if ({{ $rider->is_available ? 'true' : 'false' }}) {
-        Swal.fire({
-            title: 'Accept Delivery?',
-            text: 'You are about to accept this delivery order.',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#05bb14',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Yes, Accept'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                fetch(`/rider/deliveries/${orderId}/accept`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                        'Content-Type': 'application/json'
-                    }
-                }).then(response => response.json())
-                  .then(data => {
-                      if (data.success) {
-                          Swal.fire({
-                              title: 'Success!',
-                              text: 'Order accepted. Head to the vendor now!',
-                              icon: 'success',
-                              confirmButtonColor: '#05bb14'
-                          }).then(() => location.reload());
-                      } else {
-                          Swal.fire('Error', data.error, 'error');
-                      }
-                  });
-            }
-        });
+let locationUpdateInterval = null;
+let isRiderAvailable = {{ $rider->is_available ? 'true' : 'false' }};
+
+// Function to update rider location
+function updateRiderLocation() {
+    if (!isRiderAvailable) {
+        return;
+    }
+    
+    if (!('geolocation' in navigator)) {
+        console.log('Geolocation not supported');
+        return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+        function(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            
+            // Send location to server
+            fetch('/rider/location', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    latitude: lat,
+                    longitude: lng
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update last update time display
+                    const now = new Date();
+                    const timeString = now.toLocaleTimeString();
+                    document.getElementById('lastUpdateTime').innerHTML = `<i class="bi bi-clock"></i> Last update: ${timeString}`;
+                }
+            })
+            .catch(error => {
+                console.error('Location update error:', error);
+            });
+        },
+        function(error) {
+            console.error('Geolocation error:', error);
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+}
+
+// Start/Stop location tracking based on availability
+function startLocationTracking() {
+    if (locationUpdateInterval) {
+        clearInterval(locationUpdateInterval);
+        locationUpdateInterval = null;
+    }
+    
+    if (isRiderAvailable) {
+        // Update immediately when becoming available
+        updateRiderLocation();
+        // Then update every 10 seconds
+        locationUpdateInterval = setInterval(updateRiderLocation, 10000);
+        document.getElementById('locationStatusText').innerHTML = '<span class="text-success">📍 Location tracking active - Updating every 10 seconds</span>';
     } else {
-        Swal.fire('Offline', 'You must be online to accept orders. Toggle your availability first.', 'warning');
+        document.getElementById('locationStatusText').innerHTML = '<span class="text-muted">📍 Location tracking paused (Go online to start tracking)</span>';
+        document.getElementById('lastUpdateTime').innerHTML = '';
     }
 }
 
+// Manual location update
+function updateLocationManually() {
+    if (!isRiderAvailable) {
+        Swal.fire('Offline', 'You must be online to update location', 'warning');
+        return;
+    }
+    
+    Swal.fire({
+        title: 'Updating Location...',
+        text: 'Getting your current position',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+    
+    if (!('geolocation' in navigator)) {
+        Swal.fire('Error', 'Geolocation is not supported by your browser', 'error');
+        return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+        function(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            
+            fetch('/rider/location', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    latitude: lat,
+                    longitude: lng
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                Swal.close();
+                if (data.success) {
+                    Swal.fire('Success!', 'Your location has been updated', 'success');
+                    const now = new Date();
+                    document.getElementById('lastUpdateTime').innerHTML = `<i class="bi bi-clock"></i> Last update: ${now.toLocaleTimeString()}`;
+                } else {
+                    Swal.fire('Error', 'Failed to update location', 'error');
+                }
+            })
+            .catch(error => {
+                Swal.close();
+                Swal.fire('Error', 'An error occurred', 'error');
+            });
+        },
+        function(error) {
+            Swal.close();
+            Swal.fire('Error', 'Unable to get your location. Please check your GPS settings.', 'error');
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+}
+
+// Accept order function
+function acceptOrder(orderId) {
+    if (!isRiderAvailable) {
+        Swal.fire('Offline', 'You must be online to accept orders. Toggle your availability first.', 'warning');
+        return;
+    }
+    
+    Swal.fire({
+        title: 'Accept Delivery?',
+        text: 'You are about to accept this delivery order.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#05bb14',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, Accept'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch(`/rider/deliveries/${orderId}/accept`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => response.json())
+              .then(data => {
+                  if (data.success) {
+                      Swal.fire({
+                          title: 'Success!',
+                          text: 'Order accepted. Head to the vendor now!',
+                          icon: 'success',
+                          confirmButtonColor: '#05bb14'
+                      }).then(() => location.reload());
+                  } else {
+                      Swal.fire('Error', data.error, 'error');
+                  }
+              });
+        }
+    });
+}
+
+// Toggle availability function
 function toggleAvailability() {
-    // Disable button to prevent multiple clicks
     const btn = document.getElementById('availabilityBtn');
     btn.disabled = true;
     btn.style.opacity = '0.6';
     
-    // Show loading state
     Swal.fire({
         title: 'Updating Status...',
         text: 'Please wait',
@@ -330,10 +498,12 @@ function toggleAvailability() {
     }).then(response => response.json())
       .then(data => {
           if (data.success) {
-              // Close the loading Swal
-              Swal.close();
+              isRiderAvailable = data.is_available;
               
-              // Show success message
+              // Start or stop location tracking based on new availability
+              startLocationTracking();
+              
+              Swal.close();
               Swal.fire({
                   title: data.message,
                   text: 'Page will refresh now...',
@@ -342,7 +512,6 @@ function toggleAvailability() {
                   timer: 1500,
                   showConfirmButton: false
               }).then(() => {
-                  // Refresh the page after success
                   location.reload();
               });
           } else {
@@ -363,23 +532,72 @@ function showDeliveryDetails(orderId) {
     window.location.href = `/rider/deliveries/${orderId}`;
 }
 
-// Auto-refresh available orders every 30 seconds (optional)
-setInterval(function() {
-    if (document.hasFocus()) {
-        fetch(window.location.href)
-            .then(response => response.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const newAvailableCount = doc.querySelector('.badge.bg-success')?.textContent || '0';
-                const currentAvailableCount = document.querySelector('.badge.bg-success')?.textContent || '0';
-                
-                if (newAvailableCount !== currentAvailableCount) {
-                    location.reload();
-                }
-            })
-            .catch(console.error);
+// Complete delivery function
+function completeDelivery(deliveryId) {
+    Swal.fire({
+        title: 'Complete Delivery?',
+        html: `
+            <div class="mb-3">
+                <label class="form-label">Did customer pay in cash?</label>
+                <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="payment" id="payment-yes" value="1" checked>
+                    <label class="btn btn-outline-primary" for="payment-yes">Yes</label>
+                    
+                    <input type="radio" class="btn-check" name="payment" id="payment-no" value="0">
+                    <label class="btn btn-outline-primary" for="payment-no">No</label>
+                </div>
+            </div>
+            <textarea id="notes" class="form-control" placeholder="Add any notes (optional)" rows="3"></textarea>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#05bb14',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Mark as Delivered',
+        didOpen: () => {
+            document.querySelector('input[name="payment"]').checked = true;
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const paymentReceived = document.querySelector('input[name="payment"]:checked').value === '1';
+            const notes = document.getElementById('notes').value;
+            
+            fetch(`/rider/deliveries/${deliveryId}/complete`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    payment_received: paymentReceived,
+                    notes: notes
+                })
+            }).then(response => response.json())
+              .then(data => {
+                  if (data.success) {
+                      Swal.fire({
+                          title: 'Success!',
+                          text: 'Delivery marked as completed. Earnings added to your wallet!',
+                          icon: 'success',
+                          confirmButtonColor: '#05bb14'
+                      }).then(() => location.reload());
+                  } else {
+                      Swal.fire('Error', data.error || 'Failed to complete delivery', 'error');
+                  }
+              });
+        }
+    });
+}
+
+// Start location tracking on page load if rider is available
+if (isRiderAvailable) {
+    startLocationTracking();
+}
+
+// Clean up interval on page unload
+window.addEventListener('beforeunload', function() {
+    if (locationUpdateInterval) {
+        clearInterval(locationUpdateInterval);
     }
-}, 30000);
+});
 </script>
 @endsection
