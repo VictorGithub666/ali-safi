@@ -115,6 +115,43 @@ class DashboardController extends Controller
             ->with('success', $vendor->is_open ? 'Shop is now open!' : 'Shop is now closed!');
     }
 
+    /**
+     * Update vendor shop location (latitude, longitude, and address)
+     */
+    public function updateLocation(Request $request)
+    {
+        $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'business_address' => 'nullable|string|max:500',
+        ]);
+
+        $vendor = Auth::user()->vendor;
+        
+        $vendor->update([
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude,
+            'business_address' => $request->business_address ?? $vendor->business_address,
+        ]);
+
+        \Log::info('Vendor location updated', [
+            'vendor_id' => $vendor->id,
+            'business_name' => $vendor->business_name,
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Shop location updated successfully!',
+            'data' => [
+                'latitude' => $vendor->latitude,
+                'longitude' => $vendor->longitude,
+                'business_address' => $vendor->business_address,
+            ]
+        ]);
+    }
+
     public function earnings(Request $request)
     {
         $vendor = Auth::user()->vendor;

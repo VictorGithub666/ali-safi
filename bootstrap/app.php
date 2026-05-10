@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'user.type' => \App\Http\Middleware\UserType::class,
             'verified.user' => \App\Http\Middleware\VerifiedUser::class,
+            'ensure.rider.profile' => \App\Http\Middleware\EnsureRiderProfile::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

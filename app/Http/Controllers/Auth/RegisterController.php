@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Models\Rider;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class RegisterController extends Controller
 {
@@ -79,7 +82,7 @@ class RegisterController extends Controller
      */
     public function registerVendor(Request $request)
     {
-        $this->validator($this->vendorValidationRules($request->all()))->validate();
+        $request->validate($this->vendorValidationRules());
 
         $user = $this->createVendor($request->all());
 
@@ -102,7 +105,7 @@ class RegisterController extends Controller
      */
     public function registerRider(Request $request)
     {
-        $this->validator($this->riderValidationRules($request->all()))->validate();
+        $request->validate($this->riderValidationRules());
 
         $user = $this->createRider($request->all());
 
@@ -134,15 +137,17 @@ class RegisterController extends Controller
     /**
      * Get a validator for vendor registration.
      *
-     * @param  array  $data
      * @return array
      */
-    protected function vendorValidationRules(array $data)
+    protected function vendorValidationRules()
     {
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'phone' => ['required', 'string', 'max:20'],
+            'business_name' => ['required', 'string', 'max:255'],
+            'business_phone' => ['nullable', 'string', 'max:20'],
+            'business_address' => ['nullable', 'string', 'max:500'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ];
     }
@@ -150,15 +155,17 @@ class RegisterController extends Controller
     /**
      * Get a validator for rider registration.
      *
-     * @param  array  $data
      * @return array
      */
-    protected function riderValidationRules(array $data)
+    protected function riderValidationRules()
     {
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'phone' => ['required', 'string', 'max:20'],
+            'vehicle_type' => ['required', 'string', 'in:motorcycle,car,van,truck'],
+            'vehicle_number' => ['required', 'string', 'max:50'],
+            'license_number' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ];
     }
@@ -180,33 +187,76 @@ class RegisterController extends Controller
 
     /**
      * Create a new vendor user instance after valid registration.
+     * This creates BOTH the User and the Vendor record.
      *
      * @return User
      */
     protected function createVendor(array $data)
     {
-        return User::create([
+        // Create the user first
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => Hash::make($data['password']),
             'user_type' => 'vendor',
+            'is_active' => true,
+            'is_verified' => false, // Admin needs to verify
         ]);
+
+        // Create the vendor record
+        $user->vendor()->create([
+            'business_name' => $data['business_name'],
+            'business_phone' => $data['business_phone'] ?? $data['phone'],
+            'business_address' => $data['business_address'] ?? '',
+            'latitude' => null,
+            'longitude' => null,
+            'operating_hours' => json_encode(['mon_fri' => '09:00-18:00', 'sat' => '09:00-15:00', 'sun' => 'closed']),
+            'is_open' => true,
+            'rating' => 0,
+            'total_orders' => 0,
+            'wallet_balance' => 0,
+            'is_verified' => false,
+        ]);
+
+        return $user;
     }
+    
 
     /**
      * Create a new rider user instance after valid registration.
+     * This creates BOTH the User and the Rider record.
      *
      * @return User
      */
     protected function createRider(array $data)
     {
-        return User::create([
+        // Create the user first
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => Hash::make($data['password']),
             'user_type' => 'rider',
+            'is_active' => true,
+            'is_verified' => false, // Admin needs to verify
         ]);
+
+        // Create the rider record
+        $user->rider()->create([
+            'vehicle_type' => $data['vehicle_type'],
+            'vehicle_number' => $data['vehicle_number'],
+            'license_number' => $data['license_number'],
+            'is_available' => false,
+            'current_latitude' => null,
+            'current_longitude' => null,
+            'rating' => 0,
+            'total_deliveries' => 0,
+            'wallet_balance' => 0,
+            'is_verified' => false,
+            'last_location_update' => null,
+        ]);
+
+        return $user;
     }
 }

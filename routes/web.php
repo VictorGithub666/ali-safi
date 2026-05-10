@@ -77,6 +77,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/products/bulk-toggle', [VendorProductController::class, 'bulkToggleAvailability'])->name('products.bulk-toggle');
         Route::get('/products/export/csv', [VendorProductController::class, 'export'])->name('products.export');
         Route::post('/products/toggle-availability', [VendorProductController::class, 'toggleAvailability'])->name('products.toggle-availability');
+        Route::post('/update-location', [VendorDashboardController::class, 'updateLocation'])->name('update-location');
         
         // Orders
         Route::get('/orders', [VendorOrderController::class, 'index'])->name('orders.index');
@@ -89,10 +90,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
     
     // Rider routes
-    Route::middleware(['user.type:rider'])->prefix('rider')->name('rider.')->group(function () {
+    Route::middleware(['user.type:rider', 'ensure.rider.profile'])->prefix('rider')->name('rider.')->group(function () {
         Route::get('/dashboard', [DeliveryController::class, 'index'])->name('dashboard');
         
         Route::get('/deliveries', [DeliveryController::class, 'index'])->name('deliveries');
+        Route::get('/deliveries/{order}', [DeliveryController::class, 'index'])->name('deliveries.show');
         Route::post('/deliveries/{order}/accept', [DeliveryController::class, 'acceptOrder'])->name('deliveries.accept');
         Route::post('/deliveries/{order}/complete', [DeliveryController::class, 'completeDelivery'])->name('deliveries.complete');
         
@@ -100,6 +102,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/toggle-availability', [DeliveryController::class, 'toggleAvailability'])->name('toggle-availability');
         
         Route::get('/earnings', [DeliveryController::class, 'earnings'])->name('earnings');
+        Route::get('/profile', function() { return view('rider.profile'); })->name('profile');
     });
     
     // Admin routes

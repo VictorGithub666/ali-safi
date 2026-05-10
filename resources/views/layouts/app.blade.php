@@ -181,6 +181,9 @@
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ route('rider.deliveries') }}"><i class="bi bi-truck"></i> Deliveries</a>
                                 </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('rider.earnings') }}"><i class="bi bi-graph-up"></i> Earnings</a>
+                                </li>
                             @elseif(Auth::user()->user_type === 'admin')
                                 <li class="nav-item">
                                     <a class="nav-link" href="{{ route('admin.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>

@@ -11,12 +11,13 @@
                     <form method="POST" action="{{ route('register.rider') }}">
                         @csrf
 
+                        <!-- Personal Information -->
+                        <h5 class="mb-3">Personal Information</h5>
+                        
                         <div class="row mb-3">
-                            <label for="name" class="col-md-4 col-form-label text-md-end">{{ __('Full Name') }}</label>
-
+                            <label for="name" class="col-md-4 col-form-label text-md-end">{{ __('Full Name') }} <span class="text-danger">*</span></label>
                             <div class="col-md-6">
                                 <input id="name" type="text" class="form-control @error('name') is-invalid @enderror" name="name" value="{{ old('name') }}" required autocomplete="name" autofocus>
-
                                 @error('name')
                                     <span class="invalid-feedback" role="alert">
                                         <strong>{{ $message }}</strong>
@@ -26,11 +27,9 @@
                         </div>
 
                         <div class="row mb-3">
-                            <label for="email" class="col-md-4 col-form-label text-md-end">{{ __('Email Address') }}</label>
-
+                            <label for="email" class="col-md-4 col-form-label text-md-end">{{ __('Email Address') }} <span class="text-danger">*</span></label>
                             <div class="col-md-6">
                                 <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email">
-
                                 @error('email')
                                     <span class="invalid-feedback" role="alert">
                                         <strong>{{ $message }}</strong>
@@ -40,12 +39,32 @@
                         </div>
 
                         <div class="row mb-3">
-                            <label for="phone" class="col-md-4 col-form-label text-md-end">{{ __('Phone Number') }}</label>
-
+                            <label for="phone" class="col-md-4 col-form-label text-md-end">{{ __('Phone Number') }} <span class="text-danger">*</span></label>
                             <div class="col-md-6">
-                                <input id="phone" type="tel" class="form-control @error('phone') is-invalid @enderror" name="phone" value="{{ old('phone') }}" required autocomplete="tel">
-
+                                <input id="phone" type="tel" class="form-control @error('phone') is-invalid @enderror" name="phone" value="{{ old('phone') }}" required autocomplete="tel" placeholder="254712345678">
                                 @error('phone')
+                                    <span class="invalid-feedback" role="alert">
+                                        <strong>{{ $message }}</strong>
+                                    </span>
+                                @enderror
+                                <small class="text-muted">Include country code (254) or local format (07xx)</small>
+                            </div>
+                        </div>
+
+                        <!-- Vehicle Information -->
+                        <h5 class="mb-3 mt-4">Vehicle Information</h5>
+
+                        <div class="row mb-3">
+                            <label for="vehicle_type" class="col-md-4 col-form-label text-md-end">{{ __('Vehicle Type') }} <span class="text-danger">*</span></label>
+                            <div class="col-md-6">
+                                <select id="vehicle_type" class="form-select @error('vehicle_type') is-invalid @enderror" name="vehicle_type" required>
+                                    <option value="">-- Select Vehicle Type --</option>
+                                    <option value="motorcycle" {{ old('vehicle_type') == 'motorcycle' ? 'selected' : '' }}>Motorcycle / Boda Boda</option>
+                                    <option value="car" {{ old('vehicle_type') == 'car' ? 'selected' : '' }}>Car</option>
+                                    <option value="van" {{ old('vehicle_type') == 'van' ? 'selected' : '' }}>Van</option>
+                                    <option value="truck" {{ old('vehicle_type') == 'truck' ? 'selected' : '' }}>Truck</option>
+                                </select>
+                                @error('vehicle_type')
                                     <span class="invalid-feedback" role="alert">
                                         <strong>{{ $message }}</strong>
                                     </span>
@@ -54,8 +73,71 @@
                         </div>
 
                         <div class="row mb-3">
-                            <label for="password" class="col-md-4 col-form-label text-md-end">{{ __('Password') }}</label>
+                            <label for="vehicle_number" class="col-md-4 col-form-label text-md-end">{{ __('Vehicle Number/Plate') }} <span class="text-danger">*</span></label>
+                            <div class="col-md-6">
+                                <input id="vehicle_number" type="text" class="form-control @error('vehicle_number') is-invalid @enderror" name="vehicle_number" value="{{ old('vehicle_number') }}" required placeholder="e.g., KCA 123A">
+                                @error('vehicle_number')
+                                    <span class="invalid-feedback" role="alert">
+                                        <strong>{{ $message }}</strong>
+                                    </span>
+                                @enderror
+                            </div>
+                        </div>
 
+                        <div class="row mb-3">
+                            <label for="license_number" class="col-md-4 col-form-label text-md-end">{{ __('Driving License Number') }} <span class="text-danger">*</span></label>
+                            <div class="col-md-6">
+                                <input id="license_number" type="text" class="form-control @error('license_number') is-invalid @enderror" name="license_number" value="{{ old('license_number') }}" required placeholder="e.g., 12345678">
+                                @error('license_number')
+                                    <span class="invalid-feedback" role="alert">
+                                        <strong>{{ $message }}</strong>
+                                    </span>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <!-- Location Section - Same as checkout -->
+                        <h5 class="mb-3 mt-4">Current Location (Optional but recommended)</h5>
+
+                        <div class="row mb-3">
+                            <label class="col-md-4 col-form-label text-md-end">{{ __('Get Location') }}</label>
+                            <div class="col-md-6">
+                                <button type="button" id="getLocationBtn" class="btn btn-sm" style="background-color: var(--primary-green); color: white; width: 100%;">
+                                    <i class="bi bi-geo-alt me-1"></i> Get My Current Location
+                                </button>
+                                <span id="locationStatus" class="small text-muted d-block mt-1"></span>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6 offset-md-4">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="latitude" class="form-label small">Latitude</label>
+                                        <input type="number" step="0.000001" class="form-control form-control-sm @error('latitude') is-invalid @enderror" 
+                                               id="latitude" name="latitude" placeholder="-1.287389" value="{{ old('latitude') }}">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="longitude" class="form-label small">Longitude</label>
+                                        <input type="number" step="0.000001" class="form-control form-control-sm @error('longitude') is-invalid @enderror" 
+                                               id="longitude" name="longitude" placeholder="36.789012" value="{{ old('longitude') }}">
+                                    </div>
+                                </div>
+                                @error('latitude')
+                                    <span class="invalid-feedback d-block">{{ $message }}</span>
+                                @enderror
+                                @error('longitude')
+                                    <span class="invalid-feedback d-block">{{ $message }}</span>
+                                @enderror
+                                <small class="text-muted">Click "Get My Current Location" to auto-fill coordinates</small>
+                            </div>
+                        </div>
+
+                        <!-- Password Section -->
+                        <h5 class="mb-3 mt-4">Account Security</h5>
+
+                        <div class="row mb-3">
+                            <label for="password" class="col-md-4 col-form-label text-md-end">{{ __('Password') }} <span class="text-danger">*</span></label>
                             <div class="col-md-6">
                                 <div class="input-group">
                                     <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="new-password">
@@ -63,7 +145,7 @@
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
-
+                                <small class="text-muted">Minimum 8 characters</small>
                                 @error('password')
                                     <span class="invalid-feedback d-block" role="alert">
                                         <strong>{{ $message }}</strong>
@@ -73,8 +155,7 @@
                         </div>
 
                         <div class="row mb-3">
-                            <label for="password-confirm" class="col-md-4 col-form-label text-md-end">{{ __('Confirm Password') }}</label>
-
+                            <label for="password-confirm" class="col-md-4 col-form-label text-md-end">{{ __('Confirm Password') }} <span class="text-danger">*</span></label>
                             <div class="col-md-6">
                                 <div class="input-group">
                                     <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password">
@@ -85,10 +166,20 @@
                             </div>
                         </div>
 
+                        <!-- Info Alert -->
+                        <div class="row mb-3">
+                            <div class="col-md-6 offset-md-4">
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <small>Your account will be reviewed by admin before you can start accepting deliveries. Once verified, you'll receive an email notification.</small>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="row mb-0">
                             <div class="col-md-6 offset-md-4">
                                 <button type="submit" class="btn btn-primary">
-                                    {{ __('Register as Rider') }}
+                                    <i class="bi bi-person-plus"></i> {{ __('Register as Rider') }}
                                 </button>
                                 <a href="{{ route('register') }}" class="btn btn-link">{{ __('Register as Customer') }}</a>
                             </div>
@@ -99,4 +190,99 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Password visibility toggle
+    document.querySelectorAll('.toggle-password').forEach(button => {
+        button.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const passwordInput = document.getElementById(targetId);
+            const icon = this.querySelector('i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
+        });
+    });
+
+    // Location picker - Same working code from checkout
+    const getLocationBtn = document.getElementById('getLocationBtn');
+    const latInput = document.getElementById('latitude');
+    const lngInput = document.getElementById('longitude');
+    const statusSpan = document.getElementById('locationStatus');
+
+    getLocationBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        getLocation();
+    });
+
+    function getLocation() {
+        if (!('geolocation' in navigator)) {
+            showStatus('Geolocation is not supported by your browser', 'danger');
+            return;
+        }
+
+        statusSpan.textContent = 'Getting your location...';
+        statusSpan.style.color = '#6c757d';
+        getLocationBtn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                
+                latInput.value = lat.toFixed(6);
+                lngInput.value = lng.toFixed(6);
+                
+                showStatus('✓ Location updated successfully!', 'success');
+                getLocationBtn.disabled = false;
+            },
+            function(error) {
+                getLocationBtn.disabled = false;
+                
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        showStatus('❌ Permission denied. Please enable location in your browser settings.', 'danger');
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        showStatus('❌ Location information is unavailable.', 'danger');
+                        break;
+                    case error.TIMEOUT:
+                        showStatus('❌ The request timed out. Please try again.', 'danger');
+                        break;
+                    default:
+                        showStatus('❌ An error occurred. Please try again.', 'danger');
+                }
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+
+    function showStatus(message, type) {
+        statusSpan.textContent = message;
+        if (type === 'success') {
+            statusSpan.style.color = 'var(--primary-green)';
+            setTimeout(() => {
+                statusSpan.textContent = '';
+            }, 4000);
+        } else if (type === 'danger') {
+            statusSpan.style.color = '#dc3545';
+            setTimeout(() => {
+                statusSpan.textContent = '';
+            }, 5000);
+        }
+    }
+});
+</script>
 @endsection
