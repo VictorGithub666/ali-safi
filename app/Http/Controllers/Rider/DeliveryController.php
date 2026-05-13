@@ -74,7 +74,7 @@ class DeliveryController extends Controller
         
         // Get available orders
         $availableOrders = Order::whereNull('rider_id')
-                               ->where('status', 'pending')
+                               ->where('status', 'ready_for_pickup')
                                ->with(['vendor.user', 'customer'])
                                ->latest()
                                ->get()
