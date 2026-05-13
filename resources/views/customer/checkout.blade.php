@@ -230,7 +230,7 @@
             </div>
 
             <!-- Order Summary -->
-            <div class="col-lg-4">
+            <div class="col-lg-8">
                 <div class="card border-0 shadow-sm sticky-top" style="top: 100px;">
                     <div class="card-header bg-white border-bottom">
                         <h5 class="card-title fw-bold mb-0">Order Summary</h5>

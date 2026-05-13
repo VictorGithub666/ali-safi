@@ -3,7 +3,7 @@
 @section('content')
 <div class="container py-5">
     <!-- Auto-refresh status indicator -->
-    <div class="row mb-3">
+    <!-- <div class="row mb-3">
         <div class="col-12">
             <div class="alert alert-info alert-dismissible fade show mb-0" id="autoRefreshAlert">
                 <div class="d-flex justify-content-between align-items-center">
@@ -23,7 +23,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div> -->
 
     <div class="row mb-4">
         <div class="col-12">
