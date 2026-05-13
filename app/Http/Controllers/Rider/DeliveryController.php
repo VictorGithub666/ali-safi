@@ -327,7 +327,19 @@ class DeliveryController extends Controller
         ]);
         
         $rider = Auth::user()->rider;
-        $rider->updateLocation($request->latitude, $request->longitude);
+        
+        // Store as string to preserve all decimal places
+        $rider->updateLocation(
+            (string) $request->latitude, 
+            (string) $request->longitude
+        );
+        
+        \Log::info('Rider location updated', [
+            'rider_id' => $rider->id,
+            'latitude' => $request->latitude,
+            'longitude' => $request->longitude,
+            'precision' => strlen(substr(strrchr((string)$request->latitude, "."), 1))
+        ]);
         
         return response()->json(['success' => true]);
     }

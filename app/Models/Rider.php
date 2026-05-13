@@ -42,9 +42,10 @@ class Rider extends Model
 
     public function updateLocation($latitude, $longitude)
     {
+        // Ensure we're storing as string to preserve full precision
         $this->update([
-            'current_latitude' => $latitude,
-            'current_longitude' => $longitude,
+            'current_latitude' => (string) $latitude,
+            'current_longitude' => (string) $longitude,
             'last_location_update' => now(),
         ]);
     }

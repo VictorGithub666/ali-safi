@@ -128,9 +128,10 @@ class DashboardController extends Controller
 
         $vendor = Auth::user()->vendor;
         
+        // Store as string to preserve all decimal places
         $vendor->update([
-            'latitude' => $request->latitude,
-            'longitude' => $request->longitude,
+            'latitude' => (string) $request->latitude,
+            'longitude' => (string) $request->longitude,
             'business_address' => $request->business_address ?? $vendor->business_address,
         ]);
 
@@ -139,14 +140,15 @@ class DashboardController extends Controller
             'business_name' => $vendor->business_name,
             'latitude' => $request->latitude,
             'longitude' => $request->longitude,
+            'precision' => strlen(substr(strrchr((string)$request->latitude, "."), 1))
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Shop location updated successfully!',
             'data' => [
-                'latitude' => $vendor->latitude,
-                'longitude' => $vendor->longitude,
+                'latitude' => (string) $vendor->latitude,
+                'longitude' => (string) $vendor->longitude,
                 'business_address' => $vendor->business_address,
             ]
         ]);

@@ -16,6 +16,12 @@ class DistanceService
      */
     public static function calculateDistance($lat1, $lon1, $lat2, $lon2)
     {
+
+        $lat1 = (float) $lat1;
+        $lon1 = (float) $lon1;
+        $lat2 = (float) $lat2;
+        $lon2 = (float) $lon2;
+
         // Earth's radius in kilometers
         $earthRadius = 6371;
 

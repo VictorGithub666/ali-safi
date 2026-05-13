@@ -173,8 +173,8 @@ class OrderController extends Controller
                     'sub_county' => $request->sub_county,
                     'ward' => $request->ward,
                     'delivery_address' => $request->delivery_address,
-                    'delivery_latitude' => $request->delivery_latitude,
-                    'delivery_longitude' => $request->delivery_longitude,
+                    'delivery_latitude' => (string) $request->delivery_latitude,  // Cast to string
+                    'delivery_longitude' => (string) $request->delivery_longitude, // Cast to string
                     'subtotal' => $subtotal,
                     'delivery_fee' => $deliveryFee,
                     'platform_fee' => $platformFee,
