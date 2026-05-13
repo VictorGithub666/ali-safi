@@ -164,7 +164,7 @@ class DeliveryController extends Controller
                 'rider_id' => $rider->id,
                 'is_available' => $rider->is_available
             ]);
-            return response()->json(['error' => 'You must be available to accept orders'], 400);
+            return redirect()->back()->with('error', 'You must be available to accept orders');
         }
         
         if ($order->rider_id) {
@@ -172,7 +172,7 @@ class DeliveryController extends Controller
                 'order_id' => $order->id,
                 'assigned_rider_id' => $order->rider_id
             ]);
-            return response()->json(['error' => 'Order already assigned'], 400);
+            return redirect()->back()->with('error', 'Order already assigned');
         }
         
         $order->update([
@@ -191,7 +191,8 @@ class DeliveryController extends Controller
             'rider_id' => $rider->id
         ]);
         
-        return response()->json(['success' => true, 'message' => 'Order accepted successfully']);
+        return redirect()->route('rider.deliveries.show', $order)
+            ->with('success', 'Order picked up successfully! Please deliver to the customer.');
     }
 
     public function completeDelivery(Request $request, Order $order)
@@ -213,7 +214,7 @@ class DeliveryController extends Controller
                 'order_rider_id' => $order->rider_id,
                 'current_rider_id' => $rider->id
             ]);
-            return response()->json(['error' => 'Unauthorized'], 403);
+            return redirect()->back()->with('error', 'Unauthorized action');
         }
         
         DB::transaction(function () use ($request, $order, $rider) {
@@ -256,7 +257,9 @@ class DeliveryController extends Controller
             ]);
         });
         
-        return response()->json(['success' => true, 'message' => 'Delivery completed successfully']);
+        // Redirect to earnings page with success message
+        return redirect()->route('rider.earnings')
+            ->with('success', '🎉 Delivery completed successfully! You earned KES ' . number_format($order->delivery_fee, 2) . '. Thank you for your service!');
     }
 
     public function toggleAvailability()
@@ -410,13 +413,37 @@ class DeliveryController extends Controller
                 ]);
             }
 
+            // Generate Google Maps URLs
+            $googleMapsUrls = [
+                'vendor_location' => $order->vendor && $order->vendor->latitude && $order->vendor->longitude 
+                    ? $this->generateNavigationUrl(
+                        $rider->current_latitude, 
+                        $rider->current_longitude,
+                        $order->vendor->latitude, 
+                        $order->vendor->longitude
+                    ) : null,
+                'customer_location' => $order->delivery_latitude && $order->delivery_longitude 
+                    ? $this->generateNavigationUrl(
+                        $order->vendor->latitude, 
+                        $order->vendor->longitude,
+                        $order->delivery_latitude, 
+                        $order->delivery_longitude
+                    ) : null,
+                'customer_direct' => $order->delivery_latitude && $order->delivery_longitude 
+                    ? $this->generateGoogleMapsUrl($order->delivery_latitude, $order->delivery_longitude) : null,
+            ];
+
+            // Get customer phone number (prioritize orders.phone, fallback to user phone)
+            $customerPhone = $order->phone ?? $order->customer->phone ?? null;
+
             Log::info('Successfully rendering delivery details view', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
+                'customer_phone' => $customerPhone,
                 'view' => 'rider.deliveries-show'
             ]);
 
-            return view('rider.deliveries-show', compact('order', 'rider'));
+            return view('rider.deliveries-show', compact('order', 'rider', 'googleMapsUrls', 'customerPhone'));
             
         } catch (\Exception $e) {
             Log::error('Error in show method', [
@@ -429,5 +456,37 @@ class DeliveryController extends Controller
             
             throw $e;
         }
+    }
+
+    /**
+     * Generate Google Maps URL for coordinates
+     */
+    private function generateGoogleMapsUrl($latitude, $longitude, $locationType = 'destination')
+    {
+        if (!$latitude || !$longitude) {
+            return null;
+        }
+        
+        // Use Google Maps URL scheme that works on both mobile and desktop
+        // This will open Google Maps app on mobile or web on desktop
+        return "https://www.google.com/maps/search/?api=1&query={$latitude},{$longitude}";
+    }
+
+    /**
+     * Generate Google Maps navigation URL for directions from current location
+     */
+    private function generateNavigationUrl($fromLat, $fromLng, $toLat, $toLng, $locationType = 'destination')
+    {
+        if (!$toLat || !$toLng) {
+            return null;
+        }
+        
+        // If rider has current location, use it as starting point
+        if ($fromLat && $fromLng) {
+            return "https://www.google.com/maps/dir/{$fromLat},{$fromLng}/{$toLat},{$toLng}/";
+        }
+        
+        // Otherwise just show the location
+        return "https://www.google.com/maps/search/?api=1&query={$toLat},{$toLng}";
     }
 }
