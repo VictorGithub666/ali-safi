@@ -2,6 +2,29 @@
 
 @section('content')
 <div class="container py-5">
+    <!-- Auto-refresh status indicator -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-info alert-dismissible fade show mb-0" id="autoRefreshAlert">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi bi-arrow-repeat me-2"></i>
+                        <span id="refreshStatus">Auto-refreshing every 10 seconds</span>
+                        <span id="countdownTimer" class="ms-2 badge bg-light text-dark"></span>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="refreshNowBtn">
+                            <i class="bi bi-arrow-repeat"></i> Refresh Now
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="toggleRefreshBtn">
+                            <i class="bi bi-pause-circle"></i> Pause
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row mb-4">
         <div class="col-12">
             <nav aria-label="breadcrumb">
@@ -24,6 +47,13 @@
                     </h5>
                 </div>
                 <div class="card-body">
+                    <!-- Last Updated Time -->
+                    <div class="text-end mb-3">
+                        <small class="text-muted" id="lastUpdatedTime">
+                            <i class="bi bi-clock"></i> Last updated: {{ now()->format('H:i:s') }}
+                        </small>
+                    </div>
+
                     <!-- Progress Percentage -->
                     <div class="text-center mb-4">
                         <div class="position-relative d-inline-block">
@@ -33,51 +63,66 @@
                                         stroke-dasharray="{{ 2 * pi() * 54 }}"
                                         stroke-dashoffset="{{ (2 * pi() * 54) - (($deliveryProgress / 100) * (2 * pi() * 54)) }}"
                                         transform="rotate(-90 60 60)"
-                                        stroke-linecap="round"/>
+                                        stroke-linecap="round"
+                                        id="progressCircle"/>
                             </svg>
                             <div class="position-absolute top-50 start-50 translate-middle text-center">
-                                <span class="fw-bold" style="font-size: 1.8rem; color: var(--primary-green);">
+                                <span class="fw-bold" id="progressPercentage" style="font-size: 1.8rem; color: var(--primary-green);">
                                     {{ $deliveryProgress }}%
                                 </span>
                             </div>
                         </div>
-                        <h6 class="mt-3 mb-0">Delivery Progress</h6>
-                        <small class="text-muted">{{ $order->status_label ?? ucfirst($order->status) }}</small>
+                        <h6 class="mt-3 mb-0" id="orderStatusText">{{ $order->status_label ?? ucfirst($order->status) }}</h6>
+                        <small class="text-muted" id="statusDescription">
+                            @if($order->status == 'pending')
+                                Your order has been placed. Waiting for vendor confirmation.
+                            @elseif($order->status == 'confirmed')
+                                Vendor has confirmed your order. They are preparing your items.
+                            @elseif($order->status == 'preparing')
+                                Your order is being prepared.
+                            @elseif($order->status == 'ready_for_pickup')
+                                Your order is ready for pickup by the rider.
+                            @elseif($order->status == 'picked_up')
+                                Rider has picked up your order and is on the way!
+                            @elseif($order->status == 'delivered')
+                                Your order has been delivered. Enjoy!
+                            @endif
+                        </small>
                     </div>
 
                     <!-- Progress Bar with Motorcycle Animation -->
                     <div class="tracking-progress mb-5">
                         <div class="progress-line">
                             <div class="progress-track"></div>
-                            <div class="progress-fill" style="width: {{ $deliveryProgress }}%;"></div>
-                            <div class="motorcycle-icon" style="left: {{ $deliveryProgress }}%;">
+                            <div class="progress-fill" id="progressFill" style="width: {{ $deliveryProgress }}%;"></div>
+                            <div class="motorcycle-icon" id="motorcycleIcon" style="left: {{ $deliveryProgress }}%;">
                                 <i class="bi bi-motorcycle"></i>
                             </div>
                         </div>
                         
                         <div class="progress-stops">
                             <div class="stop-point" data-status="Order Placed">
-                                <div class="stop-dot {{ $order->order_placed ? 'active' : '' }}"></div>
+                                <div class="stop-dot {{ $order->order_placed ? 'active' : '' }}" id="stopPlaced"></div>
                                 <div class="stop-label">Order Placed</div>
                             </div>
                             <div class="stop-point" data-status="Confirmed">
-                                <div class="stop-dot {{ $order->confirmed ? 'active' : '' }}"></div>
+                                <div class="stop-dot {{ $order->confirmed ? 'active' : '' }}" id="stopConfirmed"></div>
                                 <div class="stop-label">Confirmed</div>
                             </div>
                             <div class="stop-point" data-status="Preparing">
-                                <div class="stop-dot {{ $order->preparing ? 'active' : '' }}"></div>
+                                <div class="stop-dot {{ $order->preparing ? 'active' : '' }}" id="stopPreparing"></div>
                                 <div class="stop-label">Preparing</div>
                             </div>
                             <div class="stop-point" data-status="Ready for Pickup">
-                                <div class="stop-dot {{ $order->ready_for_pickup ? 'active' : '' }}"></div>
+                                <div class="stop-dot {{ $order->ready_for_pickup ? 'active' : '' }}" id="stopReady"></div>
                                 <div class="stop-label">Ready</div>
                             </div>
                             <div class="stop-point" data-status="On The Way">
-                                <div class="stop-dot {{ $order->on_the_way ? 'active' : '' }}"></div>
+                                <div class="stop-dot {{ $order->on_the_way ? 'active' : '' }}" id="stopOnTheWay"></div>
                                 <div class="stop-label">On The Way</div>
                             </div>
                             <div class="stop-point" data-status="Delivered">
-                                <div class="stop-dot {{ $order->delivered ? 'active' : '' }}"></div>
+                                <div class="stop-dot {{ $order->delivered ? 'active' : '' }}" id="stopDelivered"></div>
                                 <div class="stop-label">Delivered</div>
                             </div>
                         </div>
@@ -86,7 +131,7 @@
                     <!-- Order Status Timeline -->
                     <div class="order-timeline mt-4">
                         <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-2"></i>Order Timeline</h6>
-                        <div class="timeline-items">
+                        <div class="timeline-items" id="timelineItems">
                             @foreach($timeline as $event)
                                 <div class="timeline-item {{ $event['completed'] ? 'completed' : '' }}">
                                     <div class="timeline-icon">
@@ -112,14 +157,14 @@
                             <div class="rider-info mt-3 p-3 bg-light rounded">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <strong>{{ $riderLocation['name'] ?? 'Rider' }}</strong>
+                                        <strong id="riderName">{{ $riderLocation['name'] ?? 'Rider' }}</strong>
                                         <p class="mb-0 small text-muted">
-                                            <i class="bi bi-telephone"></i> {{ $riderLocation['phone'] ?? 'Not available' }}
+                                            <i class="bi bi-telephone"></i> <span id="riderPhone">{{ $riderLocation['phone'] ?? 'Not available' }}</span>
                                         </p>
                                     </div>
                                     <div>
                                         <span class="badge bg-success">
-                                            <i class="bi bi-star-fill"></i> {{ $riderLocation['rating'] ?? 'New' }}
+                                            <i class="bi bi-star-fill"></i> <span id="riderRating">{{ $riderLocation['rating'] ?? 'New' }}</span>
                                         </span>
                                     </div>
                                 </div>
@@ -144,29 +189,29 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="text-muted small">Order Number</label>
-                        <p class="fw-bold mb-0">#{{ $order->order_number }}</p>
+                        <p class="fw-bold mb-0" id="orderNumber">#{{ $order->order_number }}</p>
                     </div>
                     
                     <div class="mb-3">
                         <label class="text-muted small">Order Date</label>
-                        <p class="mb-0">{{ $order->created_at->format('M d, Y H:i A') }}</p>
+                        <p class="mb-0" id="orderDate">{{ $order->created_at->format('M d, Y H:i A') }}</p>
                     </div>
                     
                     <div class="mb-3">
                         <label class="text-muted small">Delivery Address</label>
-                        <p class="mb-0">{{ $order->delivery_address }}</p>
-                        <small class="text-muted">{{ $order->ward }}, {{ $order->sub_county }}, {{ $order->county }}</small>
+                        <p class="mb-0" id="deliveryAddress">{{ $order->delivery_address }}</p>
+                        <small class="text-muted" id="locationDetails">{{ $order->ward }}, {{ $order->sub_county }}, {{ $order->county }}</small>
                     </div>
                     
                     <div class="mb-3">
                         <label class="text-muted small">Payment Method</label>
-                        <p class="mb-0">{{ ucfirst($order->payment_method) }}</p>
+                        <p class="mb-0" id="paymentMethod">{{ ucfirst($order->payment_method) }}</p>
                     </div>
                     
                     <div class="mb-3">
                         <label class="text-muted small">Payment Status</label>
                         <p>
-                            <span class="badge bg-{{ $order->payment_status === 'paid' ? 'success' : 'warning' }}">
+                            <span class="badge bg-{{ $order->payment_status === 'paid' ? 'success' : 'warning' }}" id="paymentStatus">
                                 {{ ucfirst($order->payment_status) }}
                             </span>
                         </p>
@@ -177,20 +222,20 @@
                     <div class="mb-3">
                         <div class="d-flex justify-content-between mb-2">
                             <span>Subtotal</span>
-                            <strong>KES {{ number_format($order->subtotal, 0) }}</strong>
+                            <strong id="subtotal">KES {{ number_format($order->subtotal, 0) }}</strong>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Delivery Fee</span>
-                            <strong>KES {{ number_format($order->delivery_fee, 0) }}</strong>
+                            <strong id="deliveryFee">KES {{ number_format($order->delivery_fee, 0) }}</strong>
                         </div>
                         <div class="d-flex justify-content-between mb-3">
                             <span>Platform Fee</span>
-                            <strong>KES {{ number_format($order->platform_fee, 0) }}</strong>
+                            <strong id="platformFee">KES {{ number_format($order->platform_fee, 0) }}</strong>
                         </div>
                         <hr>
                         <div class="d-flex justify-content-between">
                             <span class="fw-bold">Total</span>
-                            <strong class="fw-bold" style="color: var(--primary-green); font-size: 1.2rem;">
+                            <strong class="fw-bold" id="totalAmount" style="color: var(--primary-green); font-size: 1.2rem;">
                                 KES {{ number_format($order->total, 0) }}
                             </strong>
                         </div>
@@ -396,6 +441,16 @@
 .motorcycle-icon {
     animation: pulse 2s infinite;
 }
+
+/* Fade animation for refresh */
+@keyframes fadeIn {
+    from { opacity: 0.5; }
+    to { opacity: 1; }
+}
+
+.refreshing {
+    animation: fadeIn 0.5s ease-in-out;
+}
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -407,20 +462,182 @@ let map = null;
 let riderMarker = null;
 let customerMarker = null;
 let updateInterval = null;
+let countdownInterval = null;
+let secondsRemaining = 10;
+let isAutoRefreshEnabled = true;
+let currentOrderId = {{ $order->id }};
 
-// Calculate delivery progress based on order status
-function getDeliveryProgress(orderStatus) {
-    const progressMap = {
-        'pending': 0,
-        'confirmed': 20,
-        'preparing': 40,
-        'ready_for_pickup': 60,
-        'picked_up': 80,
-        'in_transit': 85,
-        'on_the_way': 85,
-        'delivered': 100
-    };
-    return progressMap[orderStatus] || 0;
+// Function to refresh page content
+function refreshPageContent() {
+    if (!isAutoRefreshEnabled) return;
+    
+    console.log('Refreshing order data...');
+    document.getElementById('autoRefreshAlert').classList.add('refreshing');
+    
+    fetch(window.location.href, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Parse the HTML response
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Update progress elements
+        const newProgress = doc.querySelector('#progressPercentage')?.innerText || '0';
+        const newProgressPercent = parseInt(newProgress);
+        
+        // Update progress circle
+        const circumference = 2 * Math.PI * 54;
+        const offset = circumference - (newProgressPercent / 100 * circumference);
+        const progressCircle = document.querySelector('#progressCircle');
+        if (progressCircle) {
+            progressCircle.style.strokeDashoffset = offset;
+        }
+        
+        // Update progress percentage text
+        const progressPercentage = document.querySelector('#progressPercentage');
+        if (progressPercentage) progressPercentage.innerText = newProgress;
+        
+        // Update progress fill
+        const progressFill = document.querySelector('#progressFill');
+        if (progressFill) progressFill.style.width = newProgressPercent + '%';
+        
+        // Update motorcycle position
+        const motorcycleIcon = document.querySelector('#motorcycleIcon');
+        if (motorcycleIcon) motorcycleIcon.style.left = newProgressPercent + '%';
+        
+        // Update order status text
+        const newStatus = doc.querySelector('#orderStatusText')?.innerText;
+        if (newStatus) {
+            const statusText = document.querySelector('#orderStatusText');
+            if (statusText) statusText.innerText = newStatus;
+        }
+        
+        // Update status description
+        const newDescription = doc.querySelector('#statusDescription')?.innerHTML;
+        if (newDescription) {
+            const statusDesc = document.querySelector('#statusDescription');
+            if (statusDesc) statusDesc.innerHTML = newDescription;
+        }
+        
+        // Update stop dots
+        const stopDots = ['stopPlaced', 'stopConfirmed', 'stopPreparing', 'stopReady', 'stopOnTheWay', 'stopDelivered'];
+        stopDots.forEach(dotId => {
+            const newDotClass = doc.querySelector(`#${dotId}`)?.className;
+            const currentDot = document.querySelector(`#${dotId}`);
+            if (currentDot && newDotClass) {
+                currentDot.className = newDotClass;
+            }
+        });
+        
+        // Update timeline items
+        const newTimeline = doc.querySelector('#timelineItems')?.innerHTML;
+        if (newTimeline) {
+            const timelineItems = document.querySelector('#timelineItems');
+            if (timelineItems) timelineItems.innerHTML = newTimeline;
+        }
+        
+        // Update last updated time
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        const lastUpdated = document.querySelector('#lastUpdatedTime');
+        if (lastUpdated) lastUpdated.innerHTML = `<i class="bi bi-clock"></i> Last updated: ${timeString}`;
+        
+        // If order is delivered, stop auto-refresh
+        if (newProgressPercent === 100) {
+            stopAutoRefresh();
+            document.getElementById('refreshStatus').innerHTML = 'Order delivered! Auto-refresh stopped.';
+            document.getElementById('toggleRefreshBtn').disabled = true;
+        }
+        
+        setTimeout(() => {
+            document.getElementById('autoRefreshAlert').classList.remove('refreshing');
+        }, 500);
+    })
+    .catch(error => {
+        console.error('Error refreshing page:', error);
+        document.getElementById('autoRefreshAlert').classList.remove('refreshing');
+    });
+}
+
+// Countdown timer function
+function startCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    
+    secondsRemaining = 10;
+    updateCountdownDisplay();
+    
+    countdownInterval = setInterval(() => {
+        if (!isAutoRefreshEnabled) return;
+        
+        secondsRemaining--;
+        updateCountdownDisplay();
+        
+        if (secondsRemaining <= 0) {
+            refreshPageContent();
+            secondsRemaining = 10;
+        }
+    }, 1000);
+}
+
+function updateCountdownDisplay() {
+    const timerElement = document.getElementById('countdownTimer');
+    if (timerElement && isAutoRefreshEnabled) {
+        timerElement.innerHTML = `Next refresh in ${secondsRemaining}s`;
+    } else if (timerElement) {
+        timerElement.innerHTML = 'Auto-refresh paused';
+    }
+}
+
+function stopAutoRefresh() {
+    isAutoRefreshEnabled = false;
+    if (countdownInterval) clearInterval(countdownInterval);
+    const timerElement = document.getElementById('countdownTimer');
+    if (timerElement) timerElement.innerHTML = 'Auto-refresh paused';
+    const toggleBtn = document.getElementById('toggleRefreshBtn');
+    if (toggleBtn) {
+        toggleBtn.innerHTML = '<i class="bi bi-play-circle"></i> Resume';
+        toggleBtn.classList.remove('btn-outline-danger');
+        toggleBtn.classList.add('btn-outline-success');
+    }
+    document.getElementById('refreshStatus').innerHTML = 'Auto-refresh paused';
+}
+
+function startAutoRefresh() {
+    if (document.querySelector('#progressPercentage')?.innerText === '100') {
+        return;
+    }
+    isAutoRefreshEnabled = true;
+    startCountdown();
+    const toggleBtn = document.getElementById('toggleRefreshBtn');
+    if (toggleBtn) {
+        toggleBtn.innerHTML = '<i class="bi bi-pause-circle"></i> Pause';
+        toggleBtn.classList.remove('btn-outline-success');
+        toggleBtn.classList.add('btn-outline-danger');
+    }
+    document.getElementById('refreshStatus').innerHTML = 'Auto-refreshing every 10 seconds';
+}
+
+// Toggle refresh function
+function toggleRefresh() {
+    if (isAutoRefreshEnabled) {
+        stopAutoRefresh();
+    } else {
+        startAutoRefresh();
+        refreshPageContent(); // Refresh immediately when resuming
+    }
+}
+
+// Manual refresh
+function manualRefresh() {
+    refreshPageContent();
+    if (isAutoRefreshEnabled) {
+        secondsRemaining = 10;
+        updateCountdownDisplay();
+    }
 }
 
 // Initialize map if rider is assigned
@@ -524,12 +741,6 @@ function getDeliveryProgress(orderStatus) {
                         document.getElementById('distanceToCustomer').innerHTML = `${distance.toFixed(1)} km away`;
                         document.getElementById('eta').innerHTML = ` | ETA: ${eta} min`;
                     }
-                    
-                    // Update last update time
-                    if (data.updated_at) {
-                        const updateTime = new Date(data.updated_at);
-                        document.getElementById('lastUpdateTime').innerHTML = updateTime.toLocaleTimeString();
-                    }
                 }
             })
             .catch(error => console.error('Error updating rider location:', error));
@@ -539,18 +750,35 @@ function getDeliveryProgress(orderStatus) {
     document.addEventListener('DOMContentLoaded', function() {
         initMap();
         
-        // Update rider location every 5 seconds
+        // Update rider location every 5 seconds if order is in transit
         if ('{{ $order->status }}' === 'on_the_way' || '{{ $order->status }}' === 'picked_up' || '{{ $order->status }}' === 'in_transit') {
-            updateInterval = setInterval(updateRiderLocation, 5000);
-        }
-    });
-    
-    // Clean up interval on page unload
-    window.addEventListener('beforeunload', function() {
-        if (updateInterval) {
-            clearInterval(updateInterval);
+            setInterval(updateRiderLocation, 5000);
         }
     });
 @endif
+
+// Initialize auto-refresh on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if order is already delivered
+    const progressText = document.querySelector('#progressPercentage')?.innerText;
+    if (progressText === '100') {
+        document.getElementById('refreshStatus').innerHTML = 'Order delivered! Auto-refresh stopped.';
+        document.getElementById('toggleRefreshBtn').disabled = true;
+    } else {
+        startAutoRefresh();
+    }
+    
+    // Set up event listeners
+    const toggleBtn = document.getElementById('toggleRefreshBtn');
+    if (toggleBtn) toggleBtn.addEventListener('click', toggleRefresh);
+    
+    const refreshNowBtn = document.getElementById('refreshNowBtn');
+    if (refreshNowBtn) refreshNowBtn.addEventListener('click', manualRefresh);
+});
+
+// Clean up intervals on page unload
+window.addEventListener('beforeunload', function() {
+    if (countdownInterval) clearInterval(countdownInterval);
+});
 </script>
 @endsection
