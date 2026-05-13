@@ -94,7 +94,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/dashboard', [DeliveryController::class, 'index'])->name('dashboard');
         
         Route::get('/deliveries', [DeliveryController::class, 'index'])->name('deliveries');
-        Route::get('/deliveries/{order}', [DeliveryController::class, 'index'])->name('deliveries.show');
+        Route::get('/deliveries/{order}', [DeliveryController::class, 'show'])->name('deliveries.show');
         Route::post('/deliveries/{order}/accept', [DeliveryController::class, 'acceptOrder'])->name('deliveries.accept');
         Route::post('/deliveries/{order}/complete', [DeliveryController::class, 'completeDelivery'])->name('deliveries.complete');
         

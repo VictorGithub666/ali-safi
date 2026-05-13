@@ -112,7 +112,7 @@
                         <div class="col-md-6">
                             <label for="delivery_latitude" class="form-label fw-bold">Latitude</label>
                             <input type="number" 
-                                   step="0.000001"
+                                   step="0.0000000000000001"
                                    class="form-control @error('delivery_latitude') is-invalid @enderror" 
                                    id="delivery_latitude" 
                                    name="delivery_latitude"
@@ -127,7 +127,7 @@
                         <div class="col-md-6">
                             <label for="delivery_longitude" class="form-label fw-bold">Longitude</label>
                             <input type="number" 
-                                   step="0.000001"
+                                   step="0.0000000000000001"
                                    class="form-control @error('delivery_longitude') is-invalid @enderror" 
                                    id="delivery_longitude" 
                                    name="delivery_longitude"

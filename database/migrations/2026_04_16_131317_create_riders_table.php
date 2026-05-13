@@ -16,8 +16,8 @@ return new class extends Migration
             $table->string('vehicle_number')->nullable();
             $table->string('license_number')->nullable();
             $table->boolean('is_available')->default(false);
-            $table->decimal('current_latitude', 10, 8)->nullable();
-            $table->decimal('current_longitude', 11, 8)->nullable();
+            $table->decimal('current_latitude', 18, 16)->nullable();
+            $table->decimal('current_longitude', 18, 16)->nullable();
             $table->decimal('rating', 3, 2)->default(0);
             $table->integer('total_deliveries')->default(0);
             $table->decimal('wallet_balance', 10, 2)->default(0);

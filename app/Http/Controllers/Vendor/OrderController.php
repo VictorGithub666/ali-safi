@@ -15,7 +15,7 @@ class OrderController extends Controller
         
         $orders = $vendor->orders()
             ->with(['customer', 'rider.user', 'items.product'])
-            ->withCount('items') // Add this
+            ->withCount('items')
             ->when(request('status'), function($q) {
                 return $q->where('status', request('status'));
             })
@@ -45,7 +45,7 @@ class OrderController extends Controller
         }
 
         $order->load(['customer', 'rider.user', 'items.product', 'tracking']);
-        $order->loadCount('items'); // Add this
+        $order->loadCount('items');
 
         return view('vendor.orders.show', [
             'order' => $order,
@@ -88,12 +88,10 @@ class OrderController extends Controller
                 $order->update(['cancelled_at' => now()]);
             }
 
-            // FIX: Update vendor wallet when order is delivered
+            // Update vendor wallet when order is delivered
             if ($validated['status'] === 'delivered' && $oldStatus !== 'delivered') {
-                // Use subtotal (vendor's earnings before fees)
                 $amountToAdd = $order->subtotal;
                 
-                // Update vendor wallet and total orders
                 $vendor->wallet_balance = $vendor->wallet_balance + $amountToAdd;
                 $vendor->total_orders = $vendor->total_orders + 1;
                 $vendor->save();
@@ -108,14 +106,27 @@ class OrderController extends Controller
                 ]);
             }
 
-            // Create tracking record
-            \App\Models\OrderTracking::create([
+            // Create tracking record with location data
+            $trackingData = [
                 'order_id' => $order->id,
                 'status' => $validated['status'],
                 'notes' => $validated['notes'] ?? null,
                 'updated_by' => auth()->id(),
                 'updated_by_type' => 'vendor',
-            ]);
+            ];
+
+            // Add rider location if a rider is assigned and has coordinates
+            if ($order->rider && $order->rider->current_latitude && $order->rider->current_longitude) {
+                $trackingData['latitude'] = $order->rider->current_latitude;
+                $trackingData['longitude'] = $order->rider->current_longitude;
+            } 
+            // Add vendor location as fallback
+            elseif ($vendor->latitude && $vendor->longitude) {
+                $trackingData['latitude'] = $vendor->latitude;
+                $trackingData['longitude'] = $vendor->longitude;
+            }
+
+            \App\Models\OrderTracking::create($trackingData);
 
             DB::commit();
 

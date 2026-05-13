@@ -200,10 +200,36 @@ class OrderController extends Controller
                 
                 \Log::info('Order items created successfully', ['order_id' => $order->id]);
 
+                // Create initial tracking record with customer's delivery location
+                $order->tracking()->create([
+                    'status' => 'pending',
+                    'notes' => 'Order placed successfully',
+                    'latitude' => $request->delivery_latitude,
+                    'longitude' => $request->delivery_longitude,
+                    'updated_by' => Auth::id(),
+                    'updated_by_type' => 'customer',
+                ]);
+
                 // Match with nearest available rider based on vendor location
                 $rider = $this->matchingService->findNearestRider($vendor);
                 if ($rider) {
                     $order->update(['rider_id' => $rider->id]);
+                    
+                    // Create tracking record for rider assignment with rider's location
+                    $trackingData = [
+                        'status' => 'rider_assigned',
+                        'notes' => "Rider {$rider->user->name} has been assigned to your order",
+                        'updated_by' => Auth::id(),
+                        'updated_by_type' => 'system',
+                    ];
+                    
+                    if ($rider->current_latitude && $rider->current_longitude) {
+                        $trackingData['latitude'] = $rider->current_latitude;
+                        $trackingData['longitude'] = $rider->current_longitude;
+                    }
+                    
+                    $order->tracking()->create($trackingData);
+                    
                     \Log::info('Rider assigned', [
                         'order_id' => $order->id, 
                         'rider_id' => $rider->id,
@@ -216,6 +242,16 @@ class OrderController extends Controller
                         'order_id' => $order->id,
                         'vendor_id' => $vendor->id,
                         'vendor_location' => $vendor->latitude . ',' . $vendor->longitude
+                    ]);
+                    
+                    // Create tracking record for no rider available
+                    $order->tracking()->create([
+                        'status' => 'pending',
+                        'notes' => 'Looking for an available rider...',
+                        'latitude' => $vendor->latitude,
+                        'longitude' => $vendor->longitude,
+                        'updated_by' => Auth::id(),
+                        'updated_by_type' => 'system',
                     ]);
                 }
 
@@ -342,18 +378,21 @@ class OrderController extends Controller
     {
         $timeline = [];
 
+        // Order Placed
+        if ($order->created_at) {
+            $timeline[] = [
+                'status' => 'Order Placed',
+                'time' => $order->created_at,
+                'icon' => 'bi bi-clock-history',
+                'completed' => true
+            ];
+        }
+
         // Order Confirmed
         if ($order->confirmed_at) {
             $timeline[] = [
                 'status' => 'Order Confirmed',
                 'time' => $order->confirmed_at,
-                'icon' => 'bi bi-check-circle',
-                'completed' => true
-            ];
-        } elseif ($order->created_at) {
-            $timeline[] = [
-                'status' => 'Order Confirmed',
-                'time' => $order->created_at,
                 'icon' => 'bi bi-check-circle',
                 'completed' => true
             ];
@@ -386,16 +425,6 @@ class OrderController extends Controller
                 'time' => $order->delivered_at,
                 'icon' => 'bi bi-check-circle-fill',
                 'completed' => true
-            ];
-        }
-
-        // If no timeline events yet, show order confirmed as pending
-        if (empty($timeline) && $order->created_at) {
-            $timeline[] = [
-                'status' => 'Order Placed',
-                'time' => $order->created_at,
-                'icon' => 'bi bi-clock',
-                'completed' => false
             ];
         }
 

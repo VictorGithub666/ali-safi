@@ -114,12 +114,12 @@
                                 <div class="row">
                                     <div class="col-6">
                                         <label for="latitude" class="form-label small">Latitude</label>
-                                        <input type="number" step="0.000001" class="form-control form-control-sm @error('latitude') is-invalid @enderror" 
+                                        <input type="number" step="0.0000000000000001" class="form-control form-control-sm @error('latitude') is-invalid @enderror" 
                                                id="latitude" name="latitude" placeholder="-1.287389" value="{{ old('latitude') }}">
                                     </div>
                                     <div class="col-6">
                                         <label for="longitude" class="form-label small">Longitude</label>
-                                        <input type="number" step="0.000001" class="form-control form-control-sm @error('longitude') is-invalid @enderror" 
+                                        <input type="number" step="0.0000000000000001" class="form-control form-control-sm @error('longitude') is-invalid @enderror" 
                                                id="longitude" name="longitude" placeholder="36.789012" value="{{ old('longitude') }}">
                                     </div>
                                 </div>

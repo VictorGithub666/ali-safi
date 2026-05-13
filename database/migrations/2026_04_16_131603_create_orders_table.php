@@ -18,8 +18,8 @@ return new class extends Migration
             
             // Delivery addresses
             $table->text('delivery_address');
-            $table->decimal('delivery_latitude', 10, 8);
-            $table->decimal('delivery_longitude', 11, 8);
+            $table->decimal('delivery_latitude', 18, 16);
+            $table->decimal('delivery_longitude', 18, 16);
             
             // Order details
             $table->decimal('subtotal', 10, 2);

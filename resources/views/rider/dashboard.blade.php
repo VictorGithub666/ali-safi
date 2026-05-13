@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@use('App\Services\DistanceService')
+
 @section('content')
 <div class="container py-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -93,57 +95,58 @@
     <div class="row">
         <!-- Active Deliveries -->
         <div class="col-md-8">
-            <div class="card mb-4">
-                <div class="card-header bg-light">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0"><i class="bi bi-hourglass"></i> Active Deliveries</h6>
-                        @if($myDeliveries->count() === 0)
-                            <span class="badge bg-secondary">None</span>
-                        @endif
-                    </div>
-                </div>
-                <div class="card-body">
-                    @if($myDeliveries->count())
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Order</th>
-                                        <th>Customer</th>
-                                        <th>Location</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($myDeliveries as $delivery)
-                                        <tr>
-                                            <td><strong>#{{ $delivery->order_number }}</strong></td>
-                                            <td>{{ $delivery->customer->name }}</td>
-                                            <td>
-                                                <small class="text-muted">{{ $delivery->ward }}, {{ $delivery->sub_county }}</small>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-info">{{ ucfirst($delivery->status) }}</span>
-                                            </td>
-                                            <td>
-                                                <button type="button" class="btn btn-sm btn-outline-primary" 
-                                                        onclick="showDeliveryDetails({{ $delivery->id }})">
-                                                    <i class="bi bi-map"></i> Details
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    @else
-                        <div class="alert alert-info mb-0">
-                            <i class="bi bi-info-circle"></i> No active deliveries. Accept available orders to start earning!
-                        </div>
-                    @endif
-                </div>
+            <!-- Active Deliveries -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-hourglass"></i> Active Deliveries</h6>
+            @if($myDeliveries->count() === 0)
+                <span class="badge bg-secondary">None</span>
+            @endif
+        </div>
+    </div>
+    <div class="card-body">
+        @if($myDeliveries->count())
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Customer</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($myDeliveries as $delivery)
+                            <tr>
+                                <td><strong>#{{ $delivery->order_number }}</strong></td>
+                                <td>{{ $delivery->customer->name }}</td>
+                                <td>
+                                    <small class="text-muted">{{ $delivery->ward }}, {{ $delivery->sub_county }}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ ucfirst($delivery->status) }}</span>
+                                </td>
+                                <td>
+                                    <a href="{{ route('rider.deliveries.show', $delivery->id) }}" 
+   class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-eye"></i> Details
+</a>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
+        @else
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i> No active deliveries. Accept available orders to start earning!
+            </div>
+        @endif
+    </div>
+</div>
 
             <!-- Available Orders -->
             <div class="card">
@@ -155,38 +158,122 @@
                 </div>
                 <div class="card-body">
                     @if($availableOrders->count())
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Order</th>
-                                        <th>From Vendor</th>
-                                        <th>To Location</th>
-                                        <th>Fee</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($availableOrders as $order)
-                                        <tr>
-                                            <td><strong>#{{ $order->order_number }}</strong></td>
-                                            <td>{{ $order->vendor->business_name }}</td>
-                                            <td>
-                                                <small class="text-muted">{{ $order->ward }}, {{ $order->sub_county }}</small>
-                                            </td>
-                                            <td>
-                                                <strong class="text-success">KES {{ number_format($order->delivery_fee, 0) }}</strong>
-                                            </td>
-                                            <td>
-                                                <button type="button" class="btn btn-sm btn-success" 
-                                                        onclick="acceptOrder({{ $order->id }})">
-                                                    <i class="bi bi-check-lg"></i> Accept
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                        <div class="row g-3">
+                            @foreach($availableOrders as $order)
+                                <div class="col-12">
+                                    <div class="card border-0 shadow-sm hover-effect" style="transition: all 0.3s ease;">
+                                        <div class="card-body p-3">
+                                            <div class="row">
+                                                <div class="col-md-8">
+                                                    <!-- Order Header -->
+                                                    <div class="mb-3">
+                                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                                            <div>
+                                                                <h6 class="mb-1">
+                                                                    <strong>#{{ $order->order_number }}</strong>
+                                                                    <span class="badge bg-info ms-2">{{ ucfirst($order->status) }}</span>
+                                                                </h6>
+                                                                <small class="text-muted">
+                                                                    <i class="bi bi-shop"></i> {{ $order->vendor->business_name }}
+                                                                </small>
+                                                            </div>
+                                                            <div class="text-end">
+                                                                <h5 class="text-success mb-0">KES {{ number_format($order->delivery_fee, 0) }}</h5>
+                                                                <small class="text-muted">Delivery Fee</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Distance to Vendor -->
+                                                    <div class="row g-2 mb-3">
+                                                        <div class="col-6">
+                                                            <div class="bg-light p-2 rounded">
+                                                                <small class="text-muted d-block"><i class="bi bi-geo-alt"></i> Pickup Distance</small>
+                                                                <strong class="text-primary">
+                                                                    @if($order->distance_to_vendor_formatted)
+                                                                        {{ $order->distance_to_vendor_formatted }}
+                                                                    @else
+                                                                        <span class="text-muted">N/A</span>
+                                                                    @endif
+                                                                </strong>
+                                                                @if($order->eta_to_vendor)
+                                                                    <small class="text-muted d-block">~{{ $order->eta_to_vendor }}</small>
+                                                                @endif
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-6">
+                                                            <div class="bg-light p-2 rounded">
+                                                                <small class="text-muted d-block"><i class="bi bi-geo-alt-fill"></i> Delivery Distance</small>
+                                                                <strong class="text-primary">
+                                                                    @if($order->delivery_distance_formatted)
+                                                                        {{ $order->delivery_distance_formatted }}
+                                                                    @else
+                                                                        <span class="text-muted">N/A</span>
+                                                                    @endif
+                                                                </strong>
+                                                                @if($order->eta_delivery)
+                                                                    <small class="text-muted d-block">~{{ $order->eta_delivery }}</small>
+                                                                @endif
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Destination Details -->
+                                                    <div class="border-top pt-3">
+                                                        <h6 class="mb-2"><i class="bi bi-pin-map"></i> Delivery Destination</h6>
+                                                        <div class="row g-2">
+                                                            <div class="col-md-6">
+                                                                <small class="text-muted d-block">Address</small>
+                                                                <small><strong>{{ $order->delivery_address }}</strong></small>
+                                                                <br>
+                                                                <small class="text-muted">{{ $order->ward }}, {{ $order->sub_county }}</small>
+                                                            </div>
+                                                            <div class="col-md-6">
+                                                                <small class="text-muted d-block">Customer Phone</small>
+                                                                <small><strong>{{ $order->phone }}</strong></small>
+                                                                <br>
+                                                                <small class="text-muted d-block">Recipient: {{ $order->customer->name }}</small>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <!-- Special Instructions -->
+                                                        @if($order->special_instructions)
+                                                            <div class="mt-2">
+                                                                <small class="text-muted d-block"><i class="bi bi-info-circle"></i> Special Instructions</small>
+                                                                <small class="bg-warning bg-opacity-10 p-2 rounded d-block">{{ $order->special_instructions }}</small>
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                </div>
+
+                                                <!-- Total Distance & Action -->
+                                                <div class="col-md-4">
+                                                    <div class="d-flex flex-column h-100">
+                                                        @if($order->total_distance)
+                                                            <div class="bg-success bg-opacity-10 p-3 rounded mb-3 text-center flex-grow-1 d-flex flex-column justify-content-center">
+                                                                <small class="text-muted d-block">Total Distance</small>
+                                                                <h4 class="text-success mb-1">{{ $order->total_distance_formatted }}</h4>
+                                                                <small class="text-muted">Est. Time: {{ DistanceService::estimateDeliveryTime($order->total_distance) }}</small>
+                                                            </div>
+                                                        @endif
+                                                        
+                                                        <button type="button" class="btn btn-success btn-lg w-100 mt-auto" 
+                                                                onclick="acceptOrder({{ $order->id }})"
+                                                                style="font-weight: 500;">
+                                                            <i class="bi bi-check-lg"></i> Accept Order
+                                                        </button>
+                                                        
+                                                        <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2" 
+                                                                onclick="viewOrderDetails({{ $order->id }})">
+                                                            <i class="bi bi-eye"></i> View Details
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
                         </div>
                     @else
                         <div class="alert alert-warning mb-0">
@@ -292,6 +379,35 @@
         </div>
     </div>
 </div>
+
+<style>
+    .hover-effect {
+        cursor: pointer;
+    }
+    
+    .hover-effect:hover {
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12) !important;
+        transform: translateY(-2px);
+    }
+    
+    .order-card-header {
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .distance-badge {
+        display: inline-block;
+        padding: 0.35rem 0.65rem;
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    @media (max-width: 768px) {
+        .col-md-4 {
+            margin-top: 1rem;
+        }
+    }
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -528,9 +644,84 @@ function toggleAvailability() {
       });
 }
 
-function showDeliveryDetails(orderId) {
-    window.location.href = `/rider/deliveries/${orderId}`;
+// View order details function
+function viewOrderDetails(orderId) {
+    Swal.fire({
+        title: 'View on Map',
+        text: 'Open delivery location in maps?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#05bb14',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Open Map',
+        cancelButtonText: 'Close'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // You can integrate with Google Maps API here
+            Swal.fire('Map Feature', 'Map integration coming soon!', 'info');
+        }
+    });
 }
+
+// Replace the showDeliveryDetails function in dashboard.blade.php with this:
+
+function showDeliveryDetails(orderId) {
+    console.log('=== showDeliveryDetails called ===');
+    console.log('Order ID:', orderId);
+    console.log('Order ID type:', typeof orderId);
+    console.log('Current URL:', window.location.href);
+    
+    // Validate orderId
+    if (!orderId || orderId === 'undefined' || orderId === 'null') {
+        console.error('Invalid order ID:', orderId);
+        Swal.fire({
+            title: 'Error!',
+            text: 'Invalid order ID. Please refresh the page and try again.',
+            icon: 'error',
+            confirmButtonColor: '#05bb14'
+        });
+        return;
+    }
+    
+    // Build the URL
+    const url = `/rider/deliveries/${orderId}`;
+    console.log('Navigation URL:', url);
+    
+    // Try to navigate
+    try {
+        console.log('Attempting to navigate to:', url);
+        window.location.href = url;
+    } catch (error) {
+        console.error('Navigation error:', error);
+        Swal.fire({
+            title: 'Error!',
+            text: 'Failed to navigate to delivery details. Error: ' + error.message,
+            icon: 'error',
+            confirmButtonColor: '#05bb14'
+        });
+    }
+}
+
+// Also add debugging to the button click in the table
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== DOM fully loaded ===');
+    
+    // Debug all details buttons
+    const detailsButtons = document.querySelectorAll('button[onclick*="showDeliveryDetails"]');
+    console.log('Found details buttons:', detailsButtons.length);
+    
+    detailsButtons.forEach((btn, index) => {
+        console.log(`Button ${index}:`, btn);
+        console.log(`Button onclick attribute:`, btn.getAttribute('onclick'));
+        
+        // Extract order ID from onclick
+        const onclickAttr = btn.getAttribute('onclick');
+        const match = onclickAttr.match(/showDeliveryDetails\((\d+)\)/);
+        if (match) {
+            console.log(`Button ${index} order ID:`, match[1]);
+        }
+    });
+});
 
 // Complete delivery function
 function completeDelivery(deliveryId) {

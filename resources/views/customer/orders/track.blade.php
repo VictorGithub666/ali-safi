@@ -109,6 +109,20 @@
                             @endforeach
                         </div>
                     </div>
+                    
+                    <!-- Delivery Coordinates -->
+                    <hr>
+                    <h6 class="fw-bold small mb-2">Delivery Coordinates</h6>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <p class="small text-muted mb-1">Latitude</p>
+                            <p class="small fw-bold">{{ $order->delivery_latitude }}</p>
+                        </div>
+                        <div class="col-6">
+                            <p class="small text-muted mb-1">Longitude</p>
+                            <p class="small fw-bold">{{ $order->delivery_longitude }}</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

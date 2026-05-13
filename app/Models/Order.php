@@ -45,6 +45,12 @@ class Order extends Model
         'picked_up_at' => 'datetime',
         'delivered_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'delivery_latitude' => 'decimal:16',
+        'delivery_longitude' => 'decimal:16',
+        'subtotal' => 'decimal:2',
+        'delivery_fee' => 'decimal:2',
+        'platform_fee' => 'decimal:2',
+        'total' => 'decimal:2',
     ];
 
     protected static function boot()

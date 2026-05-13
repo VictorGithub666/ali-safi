@@ -15,8 +15,8 @@ return new class extends Migration
             $table->string('business_name');
             $table->string('business_phone');
             $table->text('business_address');
-            $table->decimal('latitude', 10, 8);
-            $table->decimal('longitude', 11, 8);
+            $table->decimal('latitude', 18, 16);
+            $table->decimal('longitude', 18, 16);
             $table->json('operating_hours')->nullable();
             $table->boolean('is_open')->default(true);
             $table->decimal('rating', 3, 2)->default(0);

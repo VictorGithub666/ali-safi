@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Rider;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Rider;
+use App\Services\DistanceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DeliveryController extends Controller
 {
@@ -17,11 +20,27 @@ class DeliveryController extends Controller
 
     public function index()
     {
+        Log::info('=== Rider Dashboard Accessed ===', [
+            'user_id' => Auth::id(),
+            'time' => now()->toDateTimeString()
+        ]);
+
         $user = Auth::user();
         $rider = $user->rider;
         
+        Log::info('Rider data retrieved', [
+            'rider_id' => $rider?->id,
+            'has_rider' => !is_null($rider),
+            'user_id' => $user->id,
+            'user_name' => $user->name
+        ]);
+        
         // Check if rider record exists
         if (!$rider) {
+            Log::warning('No rider record found, attempting to create', [
+                'user_id' => $user->id
+            ]);
+            
             // Create rider record if it doesn't exist
             $rider = Rider::create([
                 'user_id' => $user->id,
@@ -34,6 +53,11 @@ class DeliveryController extends Controller
                 'wallet_balance' => 0,
             ]);
             
+            Log::info('Rider record created', [
+                'rider_id' => $rider->id,
+                'user_id' => $user->id
+            ]);
+            
             // Refresh the user relationship
             $user->refresh();
             $rider = $user->rider;
@@ -41,17 +65,67 @@ class DeliveryController extends Controller
         
         // If still no rider record, redirect with error
         if (!$rider) {
+            Log::error('Failed to create or retrieve rider record', [
+                'user_id' => $user->id
+            ]);
             return redirect()->route('profile.edit')
                 ->with('error', 'Rider profile not properly configured. Please contact support.');
         }
         
+        // Get available orders
         $availableOrders = Order::whereNull('rider_id')
-                               ->where('status', 'ready_for_pickup')
+                               ->where('status', 'pending')
                                ->with(['vendor.user', 'customer'])
                                ->latest()
-                               ->get();
+                               ->get()
+                               ->map(function ($order) use ($rider) {
+                                   // Calculate distance from rider to vendor (pickup point)
+                                   if ($rider->current_latitude && $rider->current_longitude && 
+                                       $order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                                       $order->distance_to_vendor = DistanceService::calculateDistance(
+                                           $rider->current_latitude,
+                                           $rider->current_longitude,
+                                           $order->vendor->latitude,
+                                           $order->vendor->longitude
+                                       );
+                                       $order->distance_to_vendor_formatted = DistanceService::formatDistance(
+                                           $rider->current_latitude,
+                                           $rider->current_longitude,
+                                           $order->vendor->latitude,
+                                           $order->vendor->longitude
+                                       );
+                                       $order->eta_to_vendor = DistanceService::estimateDeliveryTime($order->distance_to_vendor);
+                                   }
+                                   
+                                   // Calculate distance from vendor to customer (delivery distance)
+                                   if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude &&
+                                       $order->delivery_latitude && $order->delivery_longitude) {
+                                       $order->delivery_distance = DistanceService::calculateDistance(
+                                           $order->vendor->latitude,
+                                           $order->vendor->longitude,
+                                           $order->delivery_latitude,
+                                           $order->delivery_longitude
+                                       );
+                                       $order->delivery_distance_formatted = DistanceService::formatDistance(
+                                           $order->vendor->latitude,
+                                           $order->vendor->longitude,
+                                           $order->delivery_latitude,
+                                           $order->delivery_longitude
+                                       );
+                                       $order->eta_delivery = DistanceService::estimateDeliveryTime($order->delivery_distance);
+                                   }
+                                   
+                                   // Calculate total distance for the entire delivery
+                                   if (isset($order->distance_to_vendor) && isset($order->delivery_distance)) {
+                                       $order->total_distance = $order->distance_to_vendor + $order->delivery_distance;
+                                       $order->total_distance_formatted = number_format($order->total_distance, 1) . ' km';
+                                   }
+                                   
+                                   return $order;
+                               });
                                
         $myDeliveries = Order::where('rider_id', $rider->id)
+                            ->whereIn('status', ['picked_up', 'on_the_way'])
                             ->with(['vendor.user', 'customer'])
                             ->latest()
                             ->get();
@@ -61,6 +135,13 @@ class DeliveryController extends Controller
                               ->whereDate('delivered_at', today())
                               ->count();
         
+        Log::info('Rider dashboard data loaded', [
+            'rider_id' => $rider->id,
+            'available_orders_count' => $availableOrders->count(),
+            'active_deliveries_count' => $myDeliveries->count(),
+            'completed_today' => $completedToday
+        ]);
+        
         return view('rider.dashboard', compact(
             'availableOrders',
             'myDeliveries',
@@ -69,15 +150,28 @@ class DeliveryController extends Controller
         ));
     }
 
-    public function acceptOrder(Request $request, Order $order)
+     public function acceptOrder(Request $request, Order $order)
     {
+        Log::info('=== Accept Order Called ===', [
+            'order_id' => $order->id,
+            'user_id' => Auth::id()
+        ]);
+        
         $rider = Auth::user()->rider;
         
         if (!$rider->is_available) {
+            Log::warning('Rider not available to accept order', [
+                'rider_id' => $rider->id,
+                'is_available' => $rider->is_available
+            ]);
             return response()->json(['error' => 'You must be available to accept orders'], 400);
         }
         
         if ($order->rider_id) {
+            Log::warning('Order already assigned', [
+                'order_id' => $order->id,
+                'assigned_rider_id' => $order->rider_id
+            ]);
             return response()->json(['error' => 'Order already assigned'], 400);
         }
         
@@ -92,11 +186,21 @@ class DeliveryController extends Controller
             'notes' => 'Order picked up by rider',
         ]);
         
+        Log::info('Order accepted successfully', [
+            'order_id' => $order->id,
+            'rider_id' => $rider->id
+        ]);
+        
         return response()->json(['success' => true, 'message' => 'Order accepted successfully']);
     }
 
     public function completeDelivery(Request $request, Order $order)
     {
+        Log::info('=== Complete Delivery Called ===', [
+            'order_id' => $order->id,
+            'user_id' => Auth::id()
+        ]);
+        
         $request->validate([
             'payment_received' => 'required|boolean',
             'notes' => 'nullable|string|max:500',
@@ -105,6 +209,10 @@ class DeliveryController extends Controller
         $rider = Auth::user()->rider;
         
         if ($order->rider_id !== $rider->id) {
+            Log::warning('Unauthorized complete delivery attempt', [
+                'order_rider_id' => $order->rider_id,
+                'current_rider_id' => $rider->id
+            ]);
             return response()->json(['error' => 'Unauthorized'], 403);
         }
         
@@ -132,13 +240,20 @@ class DeliveryController extends Controller
                     ]);
                 }
                 
-                // Update vendor and rider wallet
+                // Update vendor wallet
                 $order->vendor->increment('wallet_balance', $order->subtotal);
             }
             
             // Always increment rider wallet with delivery fee
             $rider->increment('wallet_balance', $order->delivery_fee);
             $rider->increment('total_deliveries');
+            
+            Log::info('Delivery completed successfully', [
+                'order_id' => $order->id,
+                'rider_id' => $rider->id,
+                'delivery_fee' => $order->delivery_fee,
+                'payment_received' => $request->payment_received
+            ]);
         });
         
         return response()->json(['success' => true, 'message' => 'Delivery completed successfully']);
@@ -212,5 +327,107 @@ class DeliveryController extends Controller
         $rider->updateLocation($request->latitude, $request->longitude);
         
         return response()->json(['success' => true]);
+    }
+
+    public function show(Order $order)
+    {
+        Log::info('=== Delivery Details Show Method Called ===', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'user_id' => Auth::id(),
+            'timestamp' => now()->toDateTimeString()
+        ]);
+
+        try {
+            $rider = Auth::user()->rider;
+            
+            Log::debug('Rider data', [
+                'rider_id' => $rider?->id,
+                'rider_exists' => !is_null($rider)
+            ]);
+
+            // Verify rider owns this order
+            if ($order->rider_id !== $rider->id) {
+                Log::warning('Unauthorized access attempt', [
+                    'order_rider_id' => $order->rider_id,
+                    'current_rider_id' => $rider->id,
+                    'order_id' => $order->id,
+                    'user_id' => Auth::id()
+                ]);
+                abort(403, 'Unauthorized');
+            }
+
+            Log::info('Authorization passed, loading order details');
+
+            // Load all necessary relationships
+            $order->load(['vendor.user', 'customer', 'items.product', 'tracking']);
+            
+            Log::debug('Relationships loaded', [
+                'has_vendor' => !is_null($order->vendor),
+                'has_customer' => !is_null($order->customer),
+                'items_count' => $order->items->count(),
+                'tracking_count' => $order->tracking->count()
+            ]);
+
+            // Calculate distance information
+            if ($rider->current_latitude && $rider->current_longitude && 
+                $order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                $order->distance_to_vendor = DistanceService::calculateDistance(
+                    $rider->current_latitude,
+                    $rider->current_longitude,
+                    $order->vendor->latitude,
+                    $order->vendor->longitude
+                );
+                $order->distance_to_vendor_formatted = DistanceService::formatDistance(
+                    $rider->current_latitude,
+                    $rider->current_longitude,
+                    $order->vendor->latitude,
+                    $order->vendor->longitude
+                );
+                
+                Log::debug('Distance to vendor calculated', [
+                    'distance' => $order->distance_to_vendor_formatted
+                ]);
+            }
+
+            if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude &&
+                $order->delivery_latitude && $order->delivery_longitude) {
+                $order->delivery_distance = DistanceService::calculateDistance(
+                    $order->vendor->latitude,
+                    $order->vendor->longitude,
+                    $order->delivery_latitude,
+                    $order->delivery_longitude
+                );
+                $order->delivery_distance_formatted = DistanceService::formatDistance(
+                    $order->vendor->latitude,
+                    $order->vendor->longitude,
+                    $order->delivery_latitude,
+                    $order->delivery_longitude
+                );
+                
+                Log::debug('Delivery distance calculated', [
+                    'distance' => $order->delivery_distance_formatted
+                ]);
+            }
+
+            Log::info('Successfully rendering delivery details view', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'view' => 'rider.deliveries-show'
+            ]);
+
+            return view('rider.deliveries-show', compact('order', 'rider'));
+            
+        } catch (\Exception $e) {
+            Log::error('Error in show method', [
+                'order_id' => $order->id,
+                'error_message' => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'error_trace' => $e->getTraceAsString()
+            ]);
+            
+            throw $e;
+        }
     }
 }

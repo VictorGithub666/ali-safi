@@ -175,7 +175,7 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="latitude" class="form-label">Latitude</label>
-                                <input type="number" step="0.00000001" class="form-control @error('latitude') is-invalid @enderror" 
+                                <input type="number" step="0.0000000000000001" class="form-control @error('latitude') is-invalid @enderror" 
                                        id="latitude" name="latitude" 
                                        value="{{ old('latitude', $vendor->latitude) }}" placeholder="-1.2921">
                                 @error('latitude')
@@ -184,7 +184,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label for="longitude" class="form-label">Longitude</label>
-                                <input type="number" step="0.00000001" class="form-control @error('longitude') is-invalid @enderror" 
+                                <input type="number" step="0.0000000000000001" class="form-control @error('longitude') is-invalid @enderror" 
                                        id="longitude" name="longitude" 
                                        value="{{ old('longitude', $vendor->longitude) }}" placeholder="36.8219">
                                 @error('longitude')
