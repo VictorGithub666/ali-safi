@@ -41,7 +41,9 @@ class OrderController extends Controller
         
         $order->load(['vendor.user', 'rider.user', 'items.product', 'tracking']);
         
-        return view('customer.orders.show', compact('order'));
+        $deliveryProgress = $this->calculateDeliveryProgress($order->status);
+        
+        return view('customer.orders.show', compact('order', 'deliveryProgress'));
     }
 
     public function checkout()
@@ -296,6 +298,7 @@ class OrderController extends Controller
         }
     }
 
+    // Add this method to your Customer OrderController
     public function track(Order $order)
     {
         // Ensure the customer can only track their own orders
@@ -305,6 +308,20 @@ class OrderController extends Controller
         
         // Load necessary relationships
         $order->load(['vendor.user', 'rider.user', 'customer', 'items.product', 'tracking']);
+        
+        // Calculate delivery progress
+        $deliveryProgress = $this->calculateDeliveryProgress($order->status);
+        
+        // Add status flags for the progress bar
+        $order->order_placed = true;
+        $order->confirmed = in_array($order->status, ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'on_the_way', 'delivered']);
+        $order->preparing = in_array($order->status, ['preparing', 'ready_for_pickup', 'picked_up', 'on_the_way', 'delivered']);
+        $order->ready_for_pickup = in_array($order->status, ['ready_for_pickup', 'picked_up', 'on_the_way', 'delivered']);
+        $order->on_the_way = in_array($order->status, ['picked_up', 'on_the_way', 'delivered']);
+        $order->delivered = $order->status === 'delivered';
+        
+        // Human-readable status label
+        $order->status_label = $this->getStatusLabel($order->status);
         
         // Get the latest rider location with user details
         $riderLocation = null;
@@ -326,7 +343,45 @@ class OrderController extends Controller
         // Get order timeline
         $timeline = $this->getOrderTimeline($order);
         
-        return view('customer.orders.track', compact('order', 'riderLocation', 'timeline'));
+        return view('customer.orders.track', compact('order', 'riderLocation', 'timeline', 'deliveryProgress'));
+    }
+
+    /**
+     * Calculate delivery progress percentage based on order status
+     */
+    private function calculateDeliveryProgress($status)
+    {
+        $progressMap = [
+            'pending' => 0,
+            'confirmed' => 20,
+            'preparing' => 40,
+            'ready_for_pickup' => 60,
+            'picked_up' => 80,
+            'in_transit' => 85,
+            'on_the_way' => 85,
+            'delivered' => 100
+        ];
+        
+        return $progressMap[$status] ?? 0;
+    }
+
+    /**
+     * Get human-readable status label
+     */
+    private function getStatusLabel($status)
+    {
+        $labels = [
+            'pending' => 'Order Placed - Awaiting Confirmation',
+            'confirmed' => 'Order Confirmed - Preparing Your Items',
+            'preparing' => 'Preparing Your Order',
+            'ready_for_pickup' => 'Ready for Pickup',
+            'picked_up' => 'Rider Has Picked Up Your Order',
+            'in_transit' => 'On The Way to You',
+            'on_the_way' => 'On The Way to You',
+            'delivered' => 'Delivered - Enjoy Your Order!'
+        ];
+        
+        return $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
     }
 
     public function getRiderLocation(Order $order)
