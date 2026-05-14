@@ -92,6 +92,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Rider routes
     Route::middleware(['user.type:rider', 'ensure.rider.profile'])->prefix('rider')->name('rider.')->group(function () {
         Route::get('/dashboard', [DeliveryController::class, 'index'])->name('dashboard');
+
+        Route::get('/dashboard/status', [DeliveryController::class, 'getDashboardStatus'])->name('dashboard.status');
         
         Route::get('/deliveries', [DeliveryController::class, 'index'])->name('deliveries');
         Route::get('/deliveries/{order}', [DeliveryController::class, 'show'])->name('deliveries.show');

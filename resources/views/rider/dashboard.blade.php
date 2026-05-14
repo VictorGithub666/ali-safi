@@ -5,9 +5,15 @@
 @section('content')
 <div class="container py-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold mb-0">
-            <i class="bi bi-truck"></i> Rider Dashboard
-        </h2>
+        <div>
+            <h2 class="fw-bold mb-0">
+                <i class="bi bi-truck"></i> Rider Dashboard
+            </h2>
+            <p class="text-muted small mt-1" id="lastRefreshTime">
+                <i class="bi bi-clock-history"></i> Auto-refreshing every <span id="countdown">10</span> seconds
+                <span class="badge bg-info ms-2" id="autoRefreshBadge">Auto-refresh: ON</span>
+            </p>
+        </div>
         <button type="button" class="btn btn-lg" id="availabilityBtn" 
                 onclick="toggleAvailability()" 
                 style="background-color: {{ $rider->is_available ? '#28a745' : '#dc3545' }}; color: white;">
@@ -15,6 +21,15 @@
             {{ $rider->is_available ? 'Available' : 'Offline' }}
         </button>
     </div>
+
+    <!-- Active Delivery Warning (if has active delivery) -->
+    @if(isset($hasActiveDelivery) && $hasActiveDelivery)
+    <div class="alert alert-warning alert-dismissible fade show mb-4" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Active Delivery In Progress!</strong> You cannot accept new orders until you complete your current delivery.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
 
     <!-- Stats Section -->
     <div class="row g-4 mb-5">
@@ -252,12 +267,18 @@
                                     </div>
                                     
                                     <!-- Accept Order Button -->
-                                    <form action="{{ route('rider.deliveries.accept', $order) }}" method="POST">
-                                        @csrf
-                                        <button type="submit" class="btn btn-primary w-100">
-                                            <i class="bi bi-check-circle me-1"></i> Accept & Pick Up Order
+                                    @if(!(isset($hasActiveDelivery) && $hasActiveDelivery))
+                                        <form action="{{ route('rider.deliveries.accept', $order) }}" method="POST">
+                                            @csrf
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                <i class="bi bi-check-circle me-1"></i> Accept & Pick Up Order
+                                            </button>
+                                        </form>
+                                    @else
+                                        <button type="button" class="btn btn-secondary w-100" disabled>
+                                            <i class="bi bi-ban me-1"></i> Complete Active Delivery First
                                         </button>
-                                    </form>
+                                    @endif
                                 </div>
                             </div>
                         @endforeach
@@ -380,12 +401,14 @@
         border-bottom: 1px solid #e9ecef;
     }
     
-    .distance-badge {
-        display: inline-block;
-        padding: 0.35rem 0.65rem;
-        border-radius: 0.25rem;
-        font-size: 0.875rem;
-        font-weight: 500;
+    #autoRefreshBadge {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
     }
     
     @media (max-width: 768px) {
@@ -398,7 +421,36 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 let locationUpdateInterval = null;
+let refreshTimer = null;
+let countdown = 10;
 let isRiderAvailable = {{ $rider->is_available ? 'true' : 'false' }};
+
+// Function to reload the page
+function reloadPage() {
+    window.location.reload();
+}
+
+// Countdown timer for next refresh
+function startCountdown() {
+    countdown = 10;
+    const countdownElement = document.getElementById('countdown');
+    
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+    }
+    
+    refreshTimer = setInterval(() => {
+        countdown--;
+        if (countdownElement) {
+            countdownElement.textContent = countdown;
+        }
+        
+        if (countdown <= 0) {
+            clearInterval(refreshTimer);
+            reloadPage();
+        }
+    }, 1000);
+}
 
 // Function to update rider location
 function updateRiderLocation() {
@@ -590,15 +642,21 @@ function toggleAvailability() {
       });
 }
 
+// Start countdown timer for page refresh
+startCountdown();
+
 // Start location tracking on page load if rider is available
 if (isRiderAvailable) {
     startLocationTracking();
 }
 
-// Clean up interval on page unload
+// Clean up intervals on page unload
 window.addEventListener('beforeunload', function() {
     if (locationUpdateInterval) {
         clearInterval(locationUpdateInterval);
+    }
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
     }
 });
 </script>

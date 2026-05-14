@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 class DeliveryController extends Controller
 {
+
+
     public function __construct()
     {
         $this->middleware('user.type:rider');
@@ -27,142 +29,30 @@ class DeliveryController extends Controller
         $user = Auth::user();
         $rider = $user->rider;
         
-        Log::info('Rider data retrieved', [
-            'rider_id' => $rider?->id,
-            'has_rider' => !is_null($rider),
-            'user_id' => $user->id,
-            'user_name' => $user->name
-        ]);
-        
-        // Check if rider record exists
+        // Check if rider record exists and create if needed
         if (!$rider) {
-            Log::warning('No rider record found, attempting to create', [
-                'user_id' => $user->id
-            ]);
-            
-            // Create rider record if it doesn't exist
-            $rider = Rider::create([
-                'user_id' => $user->id,
-                'vehicle_type' => 'motorcycle',
-                'vehicle_number' => 'PENDING',
-                'license_number' => 'PENDING',
-                'is_available' => false,
-                'is_verified' => false,
-                'total_deliveries' => 0,
-                'wallet_balance' => 0,
-            ]);
-            
-            Log::info('Rider record created', [
-                'rider_id' => $rider->id,
-                'user_id' => $user->id
-            ]);
-            
-            // Refresh the user relationship
-            $user->refresh();
-            $rider = $user->rider;
+            $rider = $this->ensureRiderExists($user);
         }
         
-        // If still no rider record, redirect with error
         if (!$rider) {
-            Log::error('Failed to create or retrieve rider record', [
-                'user_id' => $user->id
-            ]);
             return redirect()->route('profile.edit')
                 ->with('error', 'Rider profile not properly configured. Please contact support.');
         }
         
-        // Get available orders
-        $availableOrders = Order::whereNull('rider_id')
-                            ->where('status', 'ready_for_pickup')
-                            ->with(['vendor.user', 'customer'])
-                            ->latest()
-                            ->get()
-                            ->map(function ($order) use ($rider) {
-                                // Debug: Log the coordinates
-                                Log::info('Order coordinates check', [
-                                    'order_id' => $order->id,
-                                    'vendor_lat' => $order->vendor?->latitude,
-                                    'vendor_lng' => $order->vendor?->longitude,
-                                    'customer_lat' => $order->delivery_latitude,
-                                    'customer_lng' => $order->delivery_longitude
-                                ]);
-                                
-                                // Add Google Maps URLs for vendor location
-                                if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
-                                    // Get coordinates as strings to preserve precision
-                                    $vendorLat = (string) $order->vendor->latitude;
-                                    $vendorLng = (string) $order->vendor->longitude;
-                                    
-                                    $order->vendor_maps_url = "https://www.google.com/maps/search/?api=1&query={$vendorLat},{$vendorLng}";
-                                    
-                                    // Generate directions from rider's current location to vendor
-                                    if ($rider->current_latitude && $rider->current_longitude) {
-                                        $riderLat = (string) $rider->current_latitude;
-                                        $riderLng = (string) $rider->current_longitude;
-                                        $order->vendor_directions_url = "https://www.google.com/maps/dir/{$riderLat},{$riderLng}/{$vendorLat},{$vendorLng}/";
-                                    } else {
-                                        $order->vendor_directions_url = $order->vendor_maps_url;
-                                    }
-                                } else {
-                                    $order->vendor_maps_url = null;
-                                    $order->vendor_directions_url = null;
-                                    Log::warning('Vendor coordinates missing for order', ['order_id' => $order->id]);
-                                }
-                                
-                                // Add Google Maps URLs for customer location
-                                if ($order->delivery_latitude && $order->delivery_longitude) {
-                                    $customerLat = (string) $order->delivery_latitude;
-                                    $customerLng = (string) $order->delivery_longitude;
-                                    
-                                    $order->customer_maps_url = "https://www.google.com/maps/search/?api=1&query={$customerLat},{$customerLng}";
-                                    
-                                    // Generate directions from vendor to customer
-                                    if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
-                                        $vendorLat = (string) $order->vendor->latitude;
-                                        $vendorLng = (string) $order->vendor->longitude;
-                                        $order->customer_directions_url = "https://www.google.com/maps/dir/{$vendorLat},{$vendorLng}/{$customerLat},{$customerLng}/";
-                                    } else {
-                                        $order->customer_directions_url = $order->customer_maps_url;
-                                    }
-                                } else {
-                                    $order->customer_maps_url = null;
-                                    $order->customer_directions_url = null;
-                                    Log::warning('Customer coordinates missing for order', ['order_id' => $order->id]);
-                                }
-                                
-                                return $order;
-                            });
-                            
-        $myDeliveries = Order::where('rider_id', $rider->id)
-                            ->whereIn('status', ['picked_up', 'on_the_way'])
-                            ->with(['vendor.user', 'customer'])
-                            ->latest()
-                            ->get()
-                            ->map(function ($order) {
-                                // Also add maps URLs for active deliveries
-                                if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
-                                    $vendorLat = (string) $order->vendor->latitude;
-                                    $vendorLng = (string) $order->vendor->longitude;
-                                    $order->vendor_maps_url = "https://www.google.com/maps/search/?api=1&query={$vendorLat},{$vendorLng}";
-                                }
-                                
-                                if ($order->delivery_latitude && $order->delivery_longitude) {
-                                    $customerLat = (string) $order->delivery_latitude;
-                                    $customerLng = (string) $order->delivery_longitude;
-                                    $order->customer_maps_url = "https://www.google.com/maps/search/?api=1&query={$customerLat},{$customerLng}";
-                                    
-                                    if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
-                                        $vendorLat = (string) $order->vendor->latitude;
-                                        $vendorLng = (string) $order->vendor->longitude;
-                                        $order->customer_directions_url = "https://www.google.com/maps/dir/{$vendorLat},{$vendorLng}/{$customerLat},{$customerLng}/";
-                                    } else {
-                                        $order->customer_directions_url = $order->customer_maps_url;
-                                    }
-                                }
-                                
-                                return $order;
-                            });
-                                
+        // Check if rider already has an active delivery
+        $hasActiveDelivery = Order::where('rider_id', $rider->id)
+            ->whereIn('status', ['picked_up', 'on_the_way', 'in_transit'])
+            ->exists();
+        
+        // Only show available orders if rider has NO active delivery
+        $availableOrders = collect();
+        if (!$hasActiveDelivery) {
+            $availableOrders = $this->getAvailableOrders($rider);
+        }
+        
+        // Get active deliveries (should be 0 or 1, but we'll show all)
+        $myDeliveries = $this->getActiveDeliveries($rider);
+        
         $completedToday = Order::where('rider_id', $rider->id)
                             ->where('status', 'delivered')
                             ->whereDate('delivered_at', today())
@@ -170,18 +60,126 @@ class DeliveryController extends Controller
         
         Log::info('Rider dashboard data loaded', [
             'rider_id' => $rider->id,
+            'has_active_delivery' => $hasActiveDelivery,
             'available_orders_count' => $availableOrders->count(),
             'active_deliveries_count' => $myDeliveries->count(),
             'completed_today' => $completedToday
         ]);
         
-        // Pass both availableOrders and myDeliveries to the view
         return view('rider.dashboard', compact(
             'availableOrders',
             'myDeliveries',
             'rider',
-            'completedToday'
+            'completedToday',
+            'hasActiveDelivery'
         ));
+    }
+
+    /**
+     * Ensure rider record exists
+     */
+    private function ensureRiderExists($user)
+    {
+        Log::warning('No rider record found, attempting to create', [
+            'user_id' => $user->id
+        ]);
+        
+        $rider = Rider::create([
+            'user_id' => $user->id,
+            'vehicle_type' => 'motorcycle',
+            'vehicle_number' => 'PENDING',
+            'license_number' => 'PENDING',
+            'is_available' => false,
+            'is_verified' => false,
+            'total_deliveries' => 0,
+            'wallet_balance' => 0,
+        ]);
+        
+        Log::info('Rider record created', [
+            'rider_id' => $rider->id,
+            'user_id' => $user->id
+        ]);
+        
+        $user->refresh();
+        return $user->rider;
+    }
+
+    /**
+     * Get available orders for pickup
+     */
+    private function getAvailableOrders($rider)
+    {
+        return Order::whereNull('rider_id')
+            ->where('status', 'ready_for_pickup')
+            ->with(['vendor.user', 'customer'])
+            ->latest()
+            ->get()
+            ->map(function ($order) use ($rider) {
+                return $this->addMapsUrls($order, $rider);
+            });
+    }
+
+    /**
+     * Get active deliveries for the rider
+     */
+    private function getActiveDeliveries($rider)
+    {
+        return Order::where('rider_id', $rider->id)
+            ->whereIn('status', ['picked_up', 'on_the_way', 'in_transit'])
+            ->with(['vendor.user', 'customer'])
+            ->latest()
+            ->get()
+            ->map(function ($order) {
+                return $this->addMapsUrls($order, null);
+            });
+    }
+
+    /**
+     * Add Google Maps URLs to order
+     */
+    private function addMapsUrls($order, $rider = null)
+    {
+        // Add Google Maps URLs for vendor location
+        if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+            $vendorLat = (string) $order->vendor->latitude;
+            $vendorLng = (string) $order->vendor->longitude;
+            
+            $order->vendor_maps_url = "https://www.google.com/maps/search/?api=1&query={$vendorLat},{$vendorLng}";
+            
+            // Generate directions from rider's current location to vendor
+            if ($rider && $rider->current_latitude && $rider->current_longitude) {
+                $riderLat = (string) $rider->current_latitude;
+                $riderLng = (string) $rider->current_longitude;
+                $order->vendor_directions_url = "https://www.google.com/maps/dir/{$riderLat},{$riderLng}/{$vendorLat},{$vendorLng}/";
+            } else {
+                $order->vendor_directions_url = $order->vendor_maps_url;
+            }
+        } else {
+            $order->vendor_maps_url = null;
+            $order->vendor_directions_url = null;
+        }
+        
+        // Add Google Maps URLs for customer location
+        if ($order->delivery_latitude && $order->delivery_longitude) {
+            $customerLat = (string) $order->delivery_latitude;
+            $customerLng = (string) $order->delivery_longitude;
+            
+            $order->customer_maps_url = "https://www.google.com/maps/search/?api=1&query={$customerLat},{$customerLng}";
+            
+            // Generate directions from vendor to customer
+            if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                $vendorLat = (string) $order->vendor->latitude;
+                $vendorLng = (string) $order->vendor->longitude;
+                $order->customer_directions_url = "https://www.google.com/maps/dir/{$vendorLat},{$vendorLng}/{$customerLat},{$customerLng}/";
+            } else {
+                $order->customer_directions_url = $order->customer_maps_url;
+            }
+        } else {
+            $order->customer_maps_url = null;
+            $order->customer_directions_url = null;
+        }
+        
+        return $order;
     }
 
     public function acceptOrder(Request $request, Order $order)
@@ -201,24 +199,41 @@ class DeliveryController extends Controller
             return redirect()->back()->with('error', 'You must be available to accept orders');
         }
         
+        // Check if rider already has an active delivery
+        $hasActiveDelivery = Order::where('rider_id', $rider->id)
+            ->whereIn('status', ['picked_up', 'on_the_way', 'in_transit'])
+            ->exists();
+        
+        if ($hasActiveDelivery) {
+            Log::warning('Rider already has an active delivery', [
+                'rider_id' => $rider->id
+            ]);
+            return redirect()->back()->with('error', 'You already have an active delivery. Please complete it before accepting another.');
+        }
+        
         if ($order->rider_id) {
             Log::warning('Order already assigned', [
                 'order_id' => $order->id,
                 'assigned_rider_id' => $order->rider_id
             ]);
-            return redirect()->back()->with('error', 'Order already assigned');
+            return redirect()->back()->with('error', 'Order already assigned to another rider');
         }
         
-        $order->update([
-            'rider_id' => $rider->id,
-            'status' => 'picked_up',
-            'picked_up_at' => now(),
-        ]);
-        
-        $order->tracking()->create([
-            'status' => 'picked_up',
-            'notes' => 'Order picked up by rider',
-        ]);
+        // Use transaction to ensure data consistency
+        DB::transaction(function () use ($order, $rider) {
+            $order->update([
+                'rider_id' => $rider->id,
+                'status' => 'picked_up',
+                'picked_up_at' => now(),
+            ]);
+            
+            $order->tracking()->create([
+                'status' => 'picked_up',
+                'notes' => 'Order picked up by rider',
+                'updated_by' => $rider->user_id,
+                'updated_by_type' => 'rider',
+            ]);
+        });
         
         Log::info('Order accepted successfully', [
             'order_id' => $order->id,
@@ -228,6 +243,72 @@ class DeliveryController extends Controller
         return redirect()->route('rider.deliveries.show', $order)
             ->with('success', 'Order picked up successfully! Please deliver to the customer.');
     }
+
+    // Add a new API endpoint for checking dashboard status
+    public function getDashboardStatus()
+    {
+        $rider = Auth::user()->rider;
+        
+        if (!$rider) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rider profile not found'
+            ], 404);
+        }
+        
+        // Check if rider has active delivery
+        $hasActiveDelivery = Order::where('rider_id', $rider->id)
+            ->whereIn('status', ['picked_up', 'on_the_way', 'in_transit'])
+            ->exists();
+        
+        // Get available orders count (only if no active delivery)
+        $availableOrdersCount = 0;
+        if (!$hasActiveDelivery) {
+            $availableOrdersCount = Order::whereNull('rider_id')
+                ->where('status', 'ready_for_pickup')
+                ->count();
+        }
+        
+        // Get active delivery details if exists
+        $activeDelivery = null;
+        if ($hasActiveDelivery) {
+            $activeDelivery = Order::where('rider_id', $rider->id)
+                ->whereIn('status', ['picked_up', 'on_the_way', 'in_transit'])
+                ->with(['vendor.user', 'customer'])
+                ->first();
+                
+            if ($activeDelivery) {
+                $activeDelivery->status_label = $this->getStatusLabel($activeDelivery->status);
+            }
+        }
+        
+        return response()->json([
+            'success' => true,
+            'has_active_delivery' => $hasActiveDelivery,
+            'available_orders_count' => $availableOrdersCount,
+            'active_delivery' => $activeDelivery,
+            'is_available' => $rider->is_available,
+            'last_location_update' => $rider->last_location_update,
+            'timestamp' => now()->toIso8601String()
+        ]);
+    }
+
+    private function getStatusLabel($status)
+    {
+        $labels = [
+            'picked_up' => 'Picked Up - On the way to customer',
+            'on_the_way' => 'On The Way to Customer',
+            'in_transit' => 'In Transit',
+            'delivered' => 'Delivered'
+        ];
+        
+        return $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
+    }
+
+   
+
+   
+
 
     public function completeDelivery(Request $request, Order $order)
     {
