@@ -1,0 +1,3 @@
+
+
+Instead lets not estimate using the system... Lets just remove all data in regards to estimation then on available orders we have co-ordinates for vendor(Vendor Location from Me) and customer(Customer Location from Me) clickable which automatically shows route on google maps after clicking

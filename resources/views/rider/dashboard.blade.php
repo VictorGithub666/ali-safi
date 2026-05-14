@@ -95,58 +95,57 @@
     <div class="row">
         <!-- Active Deliveries -->
         <div class="col-md-8">
-            <!-- Active Deliveries -->
-<div class="card mb-4">
-    <div class="card-header bg-light">
-        <div class="d-flex justify-content-between align-items-center">
-            <h6 class="mb-0"><i class="bi bi-hourglass"></i> Active Deliveries</h6>
-            @if($myDeliveries->count() === 0)
-                <span class="badge bg-secondary">None</span>
-            @endif
-        </div>
-    </div>
-    <div class="card-body">
-        @if($myDeliveries->count())
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>Order</th>
-                            <th>Customer</th>
-                            <th>Location</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($myDeliveries as $delivery)
-                            <tr>
-                                <td><strong>#{{ $delivery->order_number }}</strong></td>
-                                <td>{{ $delivery->customer->name }}</td>
-                                <td>
-                                    <small class="text-muted">{{ $delivery->ward }}, {{ $delivery->sub_county }}</small>
-                                </td>
-                                <td>
-                                    <span class="badge bg-info">{{ ucfirst($delivery->status) }}</span>
-                                </td>
-                                <td>
-                                    <a href="{{ route('rider.deliveries.show', $delivery->id) }}" 
-   class="btn btn-sm btn-outline-primary">
-    <i class="bi bi-eye"></i> Details
-</a>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-hourglass"></i> Active Deliveries</h6>
+                        @if($myDeliveries->count() === 0)
+                            <span class="badge bg-secondary">None</span>
+                        @endif
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if($myDeliveries->count())
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Order</th>
+                                        <th>Customer</th>
+                                        <th>Location</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($myDeliveries as $delivery)
+                                        <tr>
+                                            <td><strong>#{{ $delivery->order_number }}</strong></td>
+                                            <td>{{ $delivery->customer->name }}</td>
+                                            <td>
+                                                <small class="text-muted">{{ $delivery->ward }}, {{ $delivery->sub_county }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-info">{{ ucfirst($delivery->status) }}</span>
+                                            </td>
+                                            <td>
+                                                <a href="{{ route('rider.deliveries.show', $delivery->id) }}" 
+                                                    class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-eye"></i> Details
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @else
+                        <div class="alert alert-info mb-0">
+                            <i class="bi bi-info-circle"></i> No active deliveries. Accept available orders to start earning!
+                        </div>
+                    @endif
+                </div>
             </div>
-        @else
-            <div class="alert alert-info mb-0">
-                <i class="bi bi-info-circle"></i> No active deliveries. Accept available orders to start earning!
-            </div>
-        @endif
-    </div>
-</div>
 
             <!-- Available Orders -->
             <div class="card">
@@ -158,123 +157,110 @@
                 </div>
                 <div class="card-body">
                     @if($availableOrders->count())
-                        <div class="row g-3">
-                            @foreach($availableOrders as $order)
-                                <div class="col-12">
-                                    <div class="card border-0 shadow-sm hover-effect" style="transition: all 0.3s ease;">
-                                        <div class="card-body p-3">
-                                            <div class="row">
-                                                <div class="col-md-8">
-                                                    <!-- Order Header -->
-                                                    <div class="mb-3">
-                                                        <div class="d-flex justify-content-between align-items-start mb-2">
-                                                            <div>
-                                                                <h6 class="mb-1">
-                                                                    <strong>#{{ $order->order_number }}</strong>
-                                                                    <span class="badge bg-info ms-2">{{ ucfirst($order->status) }}</span>
-                                                                </h6>
-                                                                <small class="text-muted">
-                                                                    <i class="bi bi-shop"></i> {{ $order->vendor->business_name }}
-                                                                </small>
-                                                            </div>
-                                                            <div class="text-end">
-                                                                <h5 class="text-success mb-0">KES {{ number_format($order->delivery_fee, 0) }}</h5>
-                                                                <small class="text-muted">Delivery Fee</small>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Distance to Vendor -->
-                                                    <div class="row g-2 mb-3">
-                                                        <div class="col-6">
-                                                            <div class="bg-light p-2 rounded">
-                                                                <small class="text-muted d-block"><i class="bi bi-geo-alt"></i> Pickup Distance</small>
-                                                                <strong class="text-primary">
-                                                                    @if($order->distance_to_vendor_formatted)
-                                                                        {{ $order->distance_to_vendor_formatted }}
-                                                                    @else
-                                                                        <span class="text-muted">N/A</span>
-                                                                    @endif
-                                                                </strong>
-                                                                @if($order->eta_to_vendor)
-                                                                    <small class="text-muted d-block">~{{ $order->eta_to_vendor }}</small>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                        <div class="col-6">
-                                                            <div class="bg-light p-2 rounded">
-                                                                <small class="text-muted d-block"><i class="bi bi-geo-alt-fill"></i> Delivery Distance</small>
-                                                                <strong class="text-primary">
-                                                                    @if($order->delivery_distance_formatted)
-                                                                        {{ $order->delivery_distance_formatted }}
-                                                                    @else
-                                                                        <span class="text-muted">N/A</span>
-                                                                    @endif
-                                                                </strong>
-                                                                @if($order->eta_delivery)
-                                                                    <small class="text-muted d-block">~{{ $order->eta_delivery }}</small>
-                                                                @endif
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Destination Details -->
-                                                    <div class="border-top pt-3">
-                                                        <h6 class="mb-2"><i class="bi bi-pin-map"></i> Delivery Destination</h6>
-                                                        <div class="row g-2">
-                                                            <div class="col-md-6">
-                                                                <small class="text-muted d-block">Address</small>
-                                                                <small><strong>{{ $order->delivery_address }}</strong></small>
-                                                                <br>
-                                                                <small class="text-muted">{{ $order->ward }}, {{ $order->sub_county }}</small>
-                                                            </div>
-                                                            <div class="col-md-6">
-                                                                <small class="text-muted d-block">Customer Phone</small>
-                                                                <small><strong>{{ $order->phone }}</strong></small>
-                                                                <br>
-                                                                <small class="text-muted d-block">Recipient: {{ $order->customer->name }}</small>
-                                                            </div>
-                                                        </div>
-                                                        
-                                                        <!-- Special Instructions -->
-                                                        @if($order->special_instructions)
-                                                            <div class="mt-2">
-                                                                <small class="text-muted d-block"><i class="bi bi-info-circle"></i> Special Instructions</small>
-                                                                <small class="bg-warning bg-opacity-10 p-2 rounded d-block">{{ $order->special_instructions }}</small>
-                                                            </div>
-                                                        @endif
-                                                    </div>
+                        @foreach($availableOrders as $order)
+                            <div class="card mb-3 border">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <h5 class="card-title mb-0">Order #{{ $order->order_number }}</h5>
+                                        <span class="badge bg-warning text-dark">Ready for Pickup</span>
+                                    </div>
+                                    
+                                    <!-- Vendor Information & Location -->
+                                    <div class="mb-3 p-2 bg-light rounded">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <i class="bi bi-shop fs-5 text-primary me-2"></i>
+                                            <strong>{{ $order->vendor->business_name }}</strong>
+                                        </div>
+                                        <div class="ps-3">
+                                            <small class="text-muted d-block mb-2">
+                                                <i class="bi bi-geo-alt"></i> {{ $order->vendor->business_address ?? 'Address not provided' }}
+                                            </small>
+                                            
+                                            <!-- Vendor Location Button -->
+                                            @if(isset($order->vendor_directions_url) && $order->vendor_directions_url)
+                                                <a href="{{ $order->vendor_directions_url }}" 
+                                                   target="_blank" 
+                                                   class="btn btn-sm btn-outline-primary w-100 mb-2">
+                                                    <i class="bi bi-geo-alt-fill me-1"></i> 
+                                                    🏪 Navigate to Shop (Get Directions)
+                                                </a>
+                                            @elseif(isset($order->vendor_maps_url) && $order->vendor_maps_url)
+                                                <a href="{{ $order->vendor_maps_url }}" 
+                                                   target="_blank" 
+                                                   class="btn btn-sm btn-outline-primary w-100 mb-2">
+                                                    <i class="bi bi-geo-alt-fill me-1"></i> 
+                                                    🏪 View Shop Location
+                                                </a>
+                                            @else
+                                                <div class="alert alert-warning py-1 mb-2">
+                                                    <small><i class="bi bi-exclamation-triangle"></i> Shop location not available</small>
                                                 </div>
-
-                                                <!-- Total Distance & Action -->
-                                                <div class="col-md-4">
-                                                    <div class="d-flex flex-column h-100">
-                                                        @if($order->total_distance)
-                                                            <div class="bg-success bg-opacity-10 p-3 rounded mb-3 text-center flex-grow-1 d-flex flex-column justify-content-center">
-                                                                <small class="text-muted d-block">Total Distance</small>
-                                                                <h4 class="text-success mb-1">{{ $order->total_distance_formatted }}</h4>
-                                                                <small class="text-muted">Est. Time: {{ DistanceService::estimateDeliveryTime($order->total_distance) }}</small>
-                                                            </div>
-                                                        @endif
-                                                        
-                                                        <button type="button" class="btn btn-success btn-lg w-100 mt-auto" 
-                                                                onclick="acceptOrder({{ $order->id }})"
-                                                                style="font-weight: 500;">
-                                                            <i class="bi bi-check-lg"></i> Accept Order
-                                                        </button>
-                                                        
-                                                        <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2" 
-                                                                onclick="viewOrderDetails({{ $order->id }})">
-                                                            <i class="bi bi-eye"></i> View Details
-                                                        </button>
-                                                    </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Customer Information & Location -->
+                                    <div class="mb-3 p-2 bg-light rounded">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <i class="bi bi-person fs-5 text-success me-2"></i>
+                                            <strong>{{ $order->customer->name }}</strong>
+                                        </div>
+                                        <div class="ps-3">
+                                            <small class="text-muted d-block mb-2">
+                                                <i class="bi bi-geo-alt"></i> {{ $order->delivery_address }}
+                                            </small>
+                                            
+                                            <!-- Customer Location Button -->
+                                            @if(isset($order->customer_directions_url) && $order->customer_directions_url)
+                                                <a href="{{ $order->customer_directions_url }}" 
+                                                   target="_blank" 
+                                                   class="btn btn-sm btn-outline-success w-100 mb-2">
+                                                    <i class="bi bi-house-door-fill me-1"></i> 
+                                                    🏠 Navigate to Customer (Get Directions)
+                                                </a>
+                                            @elseif(isset($order->customer_maps_url) && $order->customer_maps_url)
+                                                <a href="{{ $order->customer_maps_url }}" 
+                                                   target="_blank" 
+                                                   class="btn btn-sm btn-outline-success w-100 mb-2">
+                                                    <i class="bi bi-house-door-fill me-1"></i> 
+                                                    🏠 View Customer Location
+                                                </a>
+                                            @else
+                                                <div class="alert alert-warning py-1 mb-2">
+                                                    <small><i class="bi bi-exclamation-triangle"></i> Customer location not available</small>
                                                 </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Order Summary -->
+                                    <div class="bg-white p-2 rounded mb-3 border">
+                                        <div class="row text-center">
+                                            <div class="col-4">
+                                                <small class="text-muted">Items</small>
+                                                <div class="fw-bold">{{ $order->items->count() }}</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <small class="text-muted">Delivery Fee</small>
+                                                <div class="fw-bold text-success">KES {{ number_format($order->delivery_fee, 2) }}</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <small class="text-muted">Total</small>
+                                                <div class="fw-bold">KES {{ number_format($order->total, 2) }}</div>
                                             </div>
                                         </div>
                                     </div>
+                                    
+                                    <!-- Accept Order Button -->
+                                    <form action="{{ route('rider.deliveries.accept', $order) }}" method="POST">
+                                        @csrf
+                                        <button type="submit" class="btn btn-primary w-100">
+                                            <i class="bi bi-check-circle me-1"></i> Accept & Pick Up Order
+                                        </button>
+                                    </form>
                                 </div>
-                            @endforeach
-                        </div>
+                            </div>
+                        @endforeach
                     @else
                         <div class="alert alert-warning mb-0">
                             <i class="bi bi-exclamation-triangle"></i> No available orders at the moment. Check back soon!
@@ -550,46 +536,6 @@ function updateLocationManually() {
     );
 }
 
-// Accept order function
-function acceptOrder(orderId) {
-    if (!isRiderAvailable) {
-        Swal.fire('Offline', 'You must be online to accept orders. Toggle your availability first.', 'warning');
-        return;
-    }
-    
-    Swal.fire({
-        title: 'Accept Delivery?',
-        text: 'You are about to accept this delivery order.',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#05bb14',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Yes, Accept'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fetch(`/rider/deliveries/${orderId}/accept`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    'Content-Type': 'application/json'
-                }
-            }).then(response => response.json())
-              .then(data => {
-                  if (data.success) {
-                      Swal.fire({
-                          title: 'Success!',
-                          text: 'Order accepted. Head to the vendor now!',
-                          icon: 'success',
-                          confirmButtonColor: '#05bb14'
-                      }).then(() => location.reload());
-                  } else {
-                      Swal.fire('Error', data.error, 'error');
-                  }
-              });
-        }
-    });
-}
-
 // Toggle availability function
 function toggleAvailability() {
     const btn = document.getElementById('availabilityBtn');
@@ -642,141 +588,6 @@ function toggleAvailability() {
           console.error('Error:', error);
           Swal.fire('Error', 'An error occurred. Please try again.', 'error');
       });
-}
-
-// View order details function
-function viewOrderDetails(orderId) {
-    Swal.fire({
-        title: 'View on Map',
-        text: 'Open delivery location in maps?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: '#05bb14',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Open Map',
-        cancelButtonText: 'Close'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // You can integrate with Google Maps API here
-            Swal.fire('Map Feature', 'Map integration coming soon!', 'info');
-        }
-    });
-}
-
-// Replace the showDeliveryDetails function in dashboard.blade.php with this:
-
-function showDeliveryDetails(orderId) {
-    console.log('=== showDeliveryDetails called ===');
-    console.log('Order ID:', orderId);
-    console.log('Order ID type:', typeof orderId);
-    console.log('Current URL:', window.location.href);
-    
-    // Validate orderId
-    if (!orderId || orderId === 'undefined' || orderId === 'null') {
-        console.error('Invalid order ID:', orderId);
-        Swal.fire({
-            title: 'Error!',
-            text: 'Invalid order ID. Please refresh the page and try again.',
-            icon: 'error',
-            confirmButtonColor: '#05bb14'
-        });
-        return;
-    }
-    
-    // Build the URL
-    const url = `/rider/deliveries/${orderId}`;
-    console.log('Navigation URL:', url);
-    
-    // Try to navigate
-    try {
-        console.log('Attempting to navigate to:', url);
-        window.location.href = url;
-    } catch (error) {
-        console.error('Navigation error:', error);
-        Swal.fire({
-            title: 'Error!',
-            text: 'Failed to navigate to delivery details. Error: ' + error.message,
-            icon: 'error',
-            confirmButtonColor: '#05bb14'
-        });
-    }
-}
-
-// Also add debugging to the button click in the table
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('=== DOM fully loaded ===');
-    
-    // Debug all details buttons
-    const detailsButtons = document.querySelectorAll('button[onclick*="showDeliveryDetails"]');
-    console.log('Found details buttons:', detailsButtons.length);
-    
-    detailsButtons.forEach((btn, index) => {
-        console.log(`Button ${index}:`, btn);
-        console.log(`Button onclick attribute:`, btn.getAttribute('onclick'));
-        
-        // Extract order ID from onclick
-        const onclickAttr = btn.getAttribute('onclick');
-        const match = onclickAttr.match(/showDeliveryDetails\((\d+)\)/);
-        if (match) {
-            console.log(`Button ${index} order ID:`, match[1]);
-        }
-    });
-});
-
-// Complete delivery function
-function completeDelivery(deliveryId) {
-    Swal.fire({
-        title: 'Complete Delivery?',
-        html: `
-            <div class="mb-3">
-                <label class="form-label">Did customer pay in cash?</label>
-                <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="payment" id="payment-yes" value="1" checked>
-                    <label class="btn btn-outline-primary" for="payment-yes">Yes</label>
-                    
-                    <input type="radio" class="btn-check" name="payment" id="payment-no" value="0">
-                    <label class="btn btn-outline-primary" for="payment-no">No</label>
-                </div>
-            </div>
-            <textarea id="notes" class="form-control" placeholder="Add any notes (optional)" rows="3"></textarea>
-        `,
-        showCancelButton: true,
-        confirmButtonColor: '#05bb14',
-        cancelButtonColor: '#6c757d',
-        confirmButtonText: 'Mark as Delivered',
-        didOpen: () => {
-            document.querySelector('input[name="payment"]').checked = true;
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const paymentReceived = document.querySelector('input[name="payment"]:checked').value === '1';
-            const notes = document.getElementById('notes').value;
-            
-            fetch(`/rider/deliveries/${deliveryId}/complete`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    payment_received: paymentReceived,
-                    notes: notes
-                })
-            }).then(response => response.json())
-              .then(data => {
-                  if (data.success) {
-                      Swal.fire({
-                          title: 'Success!',
-                          text: 'Delivery marked as completed. Earnings added to your wallet!',
-                          icon: 'success',
-                          confirmButtonColor: '#05bb14'
-                      }).then(() => location.reload());
-                  } else {
-                      Swal.fire('Error', data.error || 'Failed to complete delivery', 'error');
-                  }
-              });
-        }
-    });
 }
 
 // Start location tracking on page load if rider is available

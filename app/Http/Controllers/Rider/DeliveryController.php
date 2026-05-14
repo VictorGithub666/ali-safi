@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Rider;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Rider;
-use App\Services\DistanceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -74,66 +73,100 @@ class DeliveryController extends Controller
         
         // Get available orders
         $availableOrders = Order::whereNull('rider_id')
-                               ->where('status', 'ready_for_pickup')
-                               ->with(['vendor.user', 'customer'])
-                               ->latest()
-                               ->get()
-                               ->map(function ($order) use ($rider) {
-                                   // Calculate distance from rider to vendor (pickup point)
-                                   if ($rider->current_latitude && $rider->current_longitude && 
-                                       $order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
-                                       $order->distance_to_vendor = DistanceService::calculateDistance(
-                                           $rider->current_latitude,
-                                           $rider->current_longitude,
-                                           $order->vendor->latitude,
-                                           $order->vendor->longitude
-                                       );
-                                       $order->distance_to_vendor_formatted = DistanceService::formatDistance(
-                                           $rider->current_latitude,
-                                           $rider->current_longitude,
-                                           $order->vendor->latitude,
-                                           $order->vendor->longitude
-                                       );
-                                       $order->eta_to_vendor = DistanceService::estimateDeliveryTime($order->distance_to_vendor);
-                                   }
-                                   
-                                   // Calculate distance from vendor to customer (delivery distance)
-                                   if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude &&
-                                       $order->delivery_latitude && $order->delivery_longitude) {
-                                       $order->delivery_distance = DistanceService::calculateDistance(
-                                           $order->vendor->latitude,
-                                           $order->vendor->longitude,
-                                           $order->delivery_latitude,
-                                           $order->delivery_longitude
-                                       );
-                                       $order->delivery_distance_formatted = DistanceService::formatDistance(
-                                           $order->vendor->latitude,
-                                           $order->vendor->longitude,
-                                           $order->delivery_latitude,
-                                           $order->delivery_longitude
-                                       );
-                                       $order->eta_delivery = DistanceService::estimateDeliveryTime($order->delivery_distance);
-                                   }
-                                   
-                                   // Calculate total distance for the entire delivery
-                                   if (isset($order->distance_to_vendor) && isset($order->delivery_distance)) {
-                                       $order->total_distance = $order->distance_to_vendor + $order->delivery_distance;
-                                       $order->total_distance_formatted = number_format($order->total_distance, 1) . ' km';
-                                   }
-                                   
-                                   return $order;
-                               });
-                               
+                            ->where('status', 'ready_for_pickup')
+                            ->with(['vendor.user', 'customer'])
+                            ->latest()
+                            ->get()
+                            ->map(function ($order) use ($rider) {
+                                // Debug: Log the coordinates
+                                Log::info('Order coordinates check', [
+                                    'order_id' => $order->id,
+                                    'vendor_lat' => $order->vendor?->latitude,
+                                    'vendor_lng' => $order->vendor?->longitude,
+                                    'customer_lat' => $order->delivery_latitude,
+                                    'customer_lng' => $order->delivery_longitude
+                                ]);
+                                
+                                // Add Google Maps URLs for vendor location
+                                if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                                    // Get coordinates as strings to preserve precision
+                                    $vendorLat = (string) $order->vendor->latitude;
+                                    $vendorLng = (string) $order->vendor->longitude;
+                                    
+                                    $order->vendor_maps_url = "https://www.google.com/maps/search/?api=1&query={$vendorLat},{$vendorLng}";
+                                    
+                                    // Generate directions from rider's current location to vendor
+                                    if ($rider->current_latitude && $rider->current_longitude) {
+                                        $riderLat = (string) $rider->current_latitude;
+                                        $riderLng = (string) $rider->current_longitude;
+                                        $order->vendor_directions_url = "https://www.google.com/maps/dir/{$riderLat},{$riderLng}/{$vendorLat},{$vendorLng}/";
+                                    } else {
+                                        $order->vendor_directions_url = $order->vendor_maps_url;
+                                    }
+                                } else {
+                                    $order->vendor_maps_url = null;
+                                    $order->vendor_directions_url = null;
+                                    Log::warning('Vendor coordinates missing for order', ['order_id' => $order->id]);
+                                }
+                                
+                                // Add Google Maps URLs for customer location
+                                if ($order->delivery_latitude && $order->delivery_longitude) {
+                                    $customerLat = (string) $order->delivery_latitude;
+                                    $customerLng = (string) $order->delivery_longitude;
+                                    
+                                    $order->customer_maps_url = "https://www.google.com/maps/search/?api=1&query={$customerLat},{$customerLng}";
+                                    
+                                    // Generate directions from vendor to customer
+                                    if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                                        $vendorLat = (string) $order->vendor->latitude;
+                                        $vendorLng = (string) $order->vendor->longitude;
+                                        $order->customer_directions_url = "https://www.google.com/maps/dir/{$vendorLat},{$vendorLng}/{$customerLat},{$customerLng}/";
+                                    } else {
+                                        $order->customer_directions_url = $order->customer_maps_url;
+                                    }
+                                } else {
+                                    $order->customer_maps_url = null;
+                                    $order->customer_directions_url = null;
+                                    Log::warning('Customer coordinates missing for order', ['order_id' => $order->id]);
+                                }
+                                
+                                return $order;
+                            });
+                            
         $myDeliveries = Order::where('rider_id', $rider->id)
                             ->whereIn('status', ['picked_up', 'on_the_way'])
                             ->with(['vendor.user', 'customer'])
                             ->latest()
-                            ->get();
-                            
+                            ->get()
+                            ->map(function ($order) {
+                                // Also add maps URLs for active deliveries
+                                if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                                    $vendorLat = (string) $order->vendor->latitude;
+                                    $vendorLng = (string) $order->vendor->longitude;
+                                    $order->vendor_maps_url = "https://www.google.com/maps/search/?api=1&query={$vendorLat},{$vendorLng}";
+                                }
+                                
+                                if ($order->delivery_latitude && $order->delivery_longitude) {
+                                    $customerLat = (string) $order->delivery_latitude;
+                                    $customerLng = (string) $order->delivery_longitude;
+                                    $order->customer_maps_url = "https://www.google.com/maps/search/?api=1&query={$customerLat},{$customerLng}";
+                                    
+                                    if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
+                                        $vendorLat = (string) $order->vendor->latitude;
+                                        $vendorLng = (string) $order->vendor->longitude;
+                                        $order->customer_directions_url = "https://www.google.com/maps/dir/{$vendorLat},{$vendorLng}/{$customerLat},{$customerLng}/";
+                                    } else {
+                                        $order->customer_directions_url = $order->customer_maps_url;
+                                    }
+                                }
+                                
+                                return $order;
+                            });
+                                
         $completedToday = Order::where('rider_id', $rider->id)
-                              ->where('status', 'delivered')
-                              ->whereDate('delivered_at', today())
-                              ->count();
+                            ->where('status', 'delivered')
+                            ->whereDate('delivered_at', today())
+                            ->count();
         
         Log::info('Rider dashboard data loaded', [
             'rider_id' => $rider->id,
@@ -142,6 +175,7 @@ class DeliveryController extends Controller
             'completed_today' => $completedToday
         ]);
         
+        // Pass both availableOrders and myDeliveries to the view
         return view('rider.dashboard', compact(
             'availableOrders',
             'myDeliveries',
@@ -150,7 +184,7 @@ class DeliveryController extends Controller
         ));
     }
 
-     public function acceptOrder(Request $request, Order $order)
+    public function acceptOrder(Request $request, Order $order)
     {
         Log::info('=== Accept Order Called ===', [
             'order_id' => $order->id,
@@ -334,11 +368,10 @@ class DeliveryController extends Controller
             (string) $request->longitude
         );
         
-        \Log::info('Rider location updated', [
+        Log::info('Rider location updated', [
             'rider_id' => $rider->id,
             'latitude' => $request->latitude,
             'longitude' => $request->longitude,
-            'precision' => strlen(substr(strrchr((string)$request->latitude, "."), 1))
         ]);
         
         return response()->json(['success' => true]);
@@ -384,65 +417,38 @@ class DeliveryController extends Controller
                 'tracking_count' => $order->tracking->count()
             ]);
 
-            // Calculate distance information
-            if ($rider->current_latitude && $rider->current_longitude && 
-                $order->vendor && $order->vendor->latitude && $order->vendor->longitude) {
-                $order->distance_to_vendor = DistanceService::calculateDistance(
-                    $rider->current_latitude,
-                    $rider->current_longitude,
-                    $order->vendor->latitude,
-                    $order->vendor->longitude
-                );
-                $order->distance_to_vendor_formatted = DistanceService::formatDistance(
-                    $rider->current_latitude,
-                    $rider->current_longitude,
-                    $order->vendor->latitude,
-                    $order->vendor->longitude
-                );
-                
-                Log::debug('Distance to vendor calculated', [
-                    'distance' => $order->distance_to_vendor_formatted
-                ]);
-            }
-
-            if ($order->vendor && $order->vendor->latitude && $order->vendor->longitude &&
-                $order->delivery_latitude && $order->delivery_longitude) {
-                $order->delivery_distance = DistanceService::calculateDistance(
-                    $order->vendor->latitude,
-                    $order->vendor->longitude,
-                    $order->delivery_latitude,
-                    $order->delivery_longitude
-                );
-                $order->delivery_distance_formatted = DistanceService::formatDistance(
-                    $order->vendor->latitude,
-                    $order->vendor->longitude,
-                    $order->delivery_latitude,
-                    $order->delivery_longitude
-                );
-                
-                Log::debug('Delivery distance calculated', [
-                    'distance' => $order->delivery_distance_formatted
-                ]);
-            }
-
-            // Generate Google Maps URLs
+            // Generate Google Maps URLs for navigation
             $googleMapsUrls = [
                 'vendor_location' => $order->vendor && $order->vendor->latitude && $order->vendor->longitude 
-                    ? $this->generateNavigationUrl(
+                    ? $this->generateDirectionsUrl(
                         $rider->current_latitude, 
                         $rider->current_longitude,
                         $order->vendor->latitude, 
-                        $order->vendor->longitude
+                        $order->vendor->longitude,
+                        'Vendor Location'
                     ) : null,
                 'customer_location' => $order->delivery_latitude && $order->delivery_longitude 
-                    ? $this->generateNavigationUrl(
+                    ? $this->generateDirectionsUrl(
                         $order->vendor->latitude, 
                         $order->vendor->longitude,
                         $order->delivery_latitude, 
-                        $order->delivery_longitude
+                        $order->delivery_longitude,
+                        'Customer Location'
                     ) : null,
                 'customer_direct' => $order->delivery_latitude && $order->delivery_longitude 
-                    ? $this->generateGoogleMapsUrl($order->delivery_latitude, $order->delivery_longitude) : null,
+                    ? $this->generateLocationUrl(
+                        $order->delivery_latitude, 
+                        $order->delivery_longitude,
+                        'Customer Location'
+                    ) : null,
+                'rider_to_customer_direct' => $order->delivery_latitude && $order->delivery_longitude && $rider->current_latitude && $rider->current_longitude
+                    ? $this->generateDirectionsUrl(
+                        $rider->current_latitude,
+                        $rider->current_longitude,
+                        $order->delivery_latitude,
+                        $order->delivery_longitude,
+                        'Customer Location (From My Location)'
+                    ) : null,
             ];
 
             // Get customer phone number (prioritize orders.phone, fallback to user phone)
@@ -471,34 +477,32 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Generate Google Maps URL for coordinates
+     * Generate Google Maps directions URL
      */
-    private function generateGoogleMapsUrl($latitude, $longitude, $locationType = 'destination')
-    {
-        if (!$latitude || !$longitude) {
-            return null;
-        }
-        
-        // Use Google Maps URL scheme that works on both mobile and desktop
-        // This will open Google Maps app on mobile or web on desktop
-        return "https://www.google.com/maps/search/?api=1&query={$latitude},{$longitude}";
-    }
-
-    /**
-     * Generate Google Maps navigation URL for directions from current location
-     */
-    private function generateNavigationUrl($fromLat, $fromLng, $toLat, $toLng, $locationType = 'destination')
+    private function generateDirectionsUrl($fromLat, $fromLng, $toLat, $toLng, $label = 'Destination')
     {
         if (!$toLat || !$toLng) {
             return null;
         }
         
-        // If rider has current location, use it as starting point
+        // If we have starting coordinates, create directions URL
         if ($fromLat && $fromLng) {
-            return "https://www.google.com/maps/dir/{$fromLat},{$fromLng}/{$toLat},{$toLng}/";
+            return "https://www.google.com/maps/dir/{$fromLat},{$fromLng}/{$toLat},{$toLng}/?travelmode=driving";
         }
         
         // Otherwise just show the location
-        return "https://www.google.com/maps/search/?api=1&query={$toLat},{$toLng}";
+        return $this->generateLocationUrl($toLat, $toLng, $label);
+    }
+
+    /**
+     * Generate Google Maps location URL
+     */
+    private function generateLocationUrl($latitude, $longitude, $label = 'Location')
+    {
+        if (!$latitude || !$longitude) {
+            return null;
+        }
+        
+        return "https://www.google.com/maps/search/?api=1&query={$latitude},{$longitude}";
     }
 }

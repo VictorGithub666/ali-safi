@@ -298,7 +298,6 @@ class OrderController extends Controller
         }
     }
 
-    // Add this method to your Customer OrderController
     public function track(Order $order)
     {
         // Ensure the customer can only track their own orders
@@ -309,7 +308,7 @@ class OrderController extends Controller
         // Load necessary relationships
         $order->load(['vendor.user', 'rider.user', 'customer', 'items.product', 'tracking']);
         
-        // Calculate delivery progress
+        // Calculate delivery progress (FIX: Move this BEFORE using it)
         $deliveryProgress = $this->calculateDeliveryProgress($order->status);
         
         // Add status flags for the progress bar
@@ -343,6 +342,16 @@ class OrderController extends Controller
         // Get order timeline
         $timeline = $this->getOrderTimeline($order);
         
+        // Add Google Maps URLs for vendor and customer (helpful for tracking page)
+        $order->vendor_location_url = $order->vendor && $order->vendor->latitude && $order->vendor->longitude 
+            ? "https://www.google.com/maps/search/?api=1&query={$order->vendor->latitude},{$order->vendor->longitude}" 
+            : null;
+        
+        $order->customer_location_url = $order->delivery_latitude && $order->delivery_longitude 
+            ? "https://www.google.com/maps/search/?api=1&query={$order->delivery_latitude},{$order->delivery_longitude}" 
+            : null;
+        
+        // Make sure deliveryProgress is passed to the view
         return view('customer.orders.track', compact('order', 'riderLocation', 'timeline', 'deliveryProgress'));
     }
 
@@ -388,7 +397,7 @@ class OrderController extends Controller
     {
         // Ensure the customer can only track their own orders
         if ($order->customer_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
 
         if (!$order->rider) {
@@ -396,6 +405,19 @@ class OrderController extends Controller
         }
 
         $order->rider->load('user');
+        
+        // Generate live tracking URL
+        $trackingUrl = null;
+        if ($order->rider->current_latitude && $order->rider->current_longitude && 
+            $order->delivery_latitude && $order->delivery_longitude) {
+            $trackingUrl = $this->generateDirectionsUrl(
+                $order->rider->current_latitude,
+                $order->rider->current_longitude,
+                $order->delivery_latitude,
+                $order->delivery_longitude,
+                'Track Your Delivery'
+            );
+        }
 
         return response()->json([
             'lat' => $order->rider->current_latitude,
@@ -407,7 +429,89 @@ class OrderController extends Controller
             'profile_pic' => $order->rider->user->profile_picture,
             'rating' => $order->rider->rating,
             'total_deliveries' => $order->rider->total_deliveries,
+            'status' => $order->status,
+            'tracking_url' => $trackingUrl,
         ]);
+    }
+
+    /**
+     * Generate Google Maps directions URL
+     */
+    private function generateDirectionsUrl($fromLat, $fromLng, $toLat, $toLng, $label = 'Destination')
+    {
+        if (!$toLat || !$toLng) {
+            return null;
+        }
+        
+        if ($fromLat && $fromLng) {
+            return "https://www.google.com/maps/dir/{$fromLat},{$fromLng}/{$toLat},{$toLng}/?travelmode=driving";
+        }
+        
+        return $this->generateLocationUrl($toLat, $toLng, $label);
+    }
+
+    /**
+     * Generate Google Maps location URL
+     */
+    private function generateLocationUrl($latitude, $longitude, $label = 'Location')
+    {
+        if (!$latitude || !$longitude) {
+            return null;
+        }
+        
+        return "https://www.google.com/maps/search/?api=1&query={$latitude},{$longitude}";
+    }
+
+    private function getOrderTimeline($order)
+    {
+        $timeline = [];
+
+        if ($order->created_at) {
+            $timeline[] = [
+                'status' => 'Order Placed',
+                'time' => $order->created_at,
+                'icon' => 'bi bi-clock-history',
+                'completed' => true
+            ];
+        }
+
+        if ($order->confirmed_at) {
+            $timeline[] = [
+                'status' => 'Order Confirmed',
+                'time' => $order->confirmed_at,
+                'icon' => 'bi bi-check-circle',
+                'completed' => true
+            ];
+        }
+
+        if ($order->prepared_at) {
+            $timeline[] = [
+                'status' => 'Order Prepared',
+                'time' => $order->prepared_at,
+                'icon' => 'bi bi-box-seam',
+                'completed' => true
+            ];
+        }
+
+        if ($order->picked_up_at) {
+            $timeline[] = [
+                'status' => 'Order Picked Up',
+                'time' => $order->picked_up_at,
+                'icon' => 'bi bi-truck',
+                'completed' => true
+            ];
+        }
+
+        if ($order->delivered_at) {
+            $timeline[] = [
+                'status' => 'Delivered',
+                'time' => $order->delivered_at,
+                'icon' => 'bi bi-check-circle-fill',
+                'completed' => true
+            ];
+        }
+
+        return $timeline;
     }
 
     public function downloadInvoice(Order $order)
@@ -429,62 +533,6 @@ class OrderController extends Controller
         return view('customer.orders.invoice', $data);
     }
 
-    private function getOrderTimeline($order)
-    {
-        $timeline = [];
-
-        // Order Placed
-        if ($order->created_at) {
-            $timeline[] = [
-                'status' => 'Order Placed',
-                'time' => $order->created_at,
-                'icon' => 'bi bi-clock-history',
-                'completed' => true
-            ];
-        }
-
-        // Order Confirmed
-        if ($order->confirmed_at) {
-            $timeline[] = [
-                'status' => 'Order Confirmed',
-                'time' => $order->confirmed_at,
-                'icon' => 'bi bi-check-circle',
-                'completed' => true
-            ];
-        }
-
-        // Order Prepared
-        if ($order->prepared_at) {
-            $timeline[] = [
-                'status' => 'Order Prepared',
-                'time' => $order->prepared_at,
-                'icon' => 'bi bi-box-seam',
-                'completed' => true
-            ];
-        }
-
-        // Order Picked Up
-        if ($order->picked_up_at) {
-            $timeline[] = [
-                'status' => 'Order Picked Up',
-                'time' => $order->picked_up_at,
-                'icon' => 'bi bi-truck',
-                'completed' => true
-            ];
-        }
-
-        // Delivered
-        if ($order->delivered_at) {
-            $timeline[] = [
-                'status' => 'Delivered',
-                'time' => $order->delivered_at,
-                'icon' => 'bi bi-check-circle-fill',
-                'completed' => true
-            ];
-        }
-
-        return $timeline;
-    }
 
     protected function calculateDeliveryFee($vendor, $customerLat, $customerLng)
     {
