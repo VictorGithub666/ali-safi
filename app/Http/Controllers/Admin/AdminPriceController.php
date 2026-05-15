@@ -44,6 +44,74 @@ class AdminPriceController extends Controller
         return view('admin.prices.create', compact('products', 'vendors'));
     }
 
+    /**
+     * Get vendor price for a specific product and vendor
+     */
+    public function getVendorPrice(Request $request)
+    {
+        try {
+            $request->validate([
+                'product_id' => 'required|exists:products,id',
+                'vendor_id' => 'required|exists:vendors,id',
+            ]);
+
+            $productId = $request->product_id;
+            $vendorId = $request->vendor_id;
+
+            // Check if there's an existing price record
+            $existingPrice = AdminPrice::where('product_id', $productId)
+                ->where('vendor_id', $vendorId)
+                ->first();
+
+            if ($existingPrice) {
+                return response()->json([
+                    'success' => true,
+                    'exists' => true,
+                    'id' => $existingPrice->id,
+                    'vendor_price' => $existingPrice->vendor_price,
+                    'customer_visible_price' => $existingPrice->customer_visible_price,
+                    'markup' => $existingPrice->markup,
+                    'base_delivery_fee' => $existingPrice->base_delivery_fee,
+                    'is_active' => $existingPrice->is_active,
+                ]);
+            }
+
+            // Get vendor's custom price from vendor_products table
+            $vendor = Vendor::find($vendorId);
+            $vendorProduct = $vendor ? $vendor->products()->where('product_id', $productId)->first() : null;
+            
+            $vendorPrice = null;
+            if ($vendorProduct && $vendorProduct->pivot->custom_price) {
+                $vendorPrice = $vendorProduct->pivot->custom_price;
+            } else {
+                // Get product base price
+                $product = Product::find($productId);
+                $vendorPrice = $product ? $product->base_price : 0;
+            }
+
+            return response()->json([
+                'success' => true,
+                'exists' => false,
+                'vendor_price' => (float) $vendorPrice,
+                'customer_visible_price' => null,
+                'markup' => null,
+                'base_delivery_fee' => null,
+                'is_active' => true,
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error in getVendorPrice', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([

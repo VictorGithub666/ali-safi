@@ -145,9 +145,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/riders/{rider}/activate', [AdminRiderController::class, 'activate'])->name('riders.activate');
         
         // Pricing Management
-        Route::resource('prices', AdminPriceController::class);
+        Route::get('/prices/get-vendor-price', [AdminPriceController::class, 'getVendorPrice'])->name('prices.get-vendor-price');
+        Route::resource('prices', AdminPriceController::class)->except(['show']);
         Route::post('/prices/bulk-update', [AdminPriceController::class, 'bulkUpdate'])->name('prices.bulk-update');
-        
+                        
         // Financial Management
         Route::get('/finances/dashboard', [AdminFinanceController::class, 'dashboard'])->name('finances.dashboard');
         Route::get('/finances/margins', [AdminFinanceController::class, 'margins'])->name('finances.margins');

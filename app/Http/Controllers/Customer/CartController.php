@@ -65,13 +65,9 @@ class CartController extends Controller
             return redirect()->back()->with('error', 'Insufficient stock available.');
         }
 
-        $price = $product->getPriceForSize($validated['size'] ?? null);
+        // Get customer price from admin pricing
+        $price = $product->getCustomerPriceForSizeAndVendor($validated['size'] ?? null, $validated['vendor_id']);
         
-        // Use custom vendor price if set
-        if ($vendorProduct->pivot->custom_price) {
-            $price = $vendorProduct->pivot->custom_price;
-        }
-
         // Check if product already in cart
         $existingCartItem = Cart::where('user_id', auth()->id())
             ->where('product_id', $validated['product_id'])

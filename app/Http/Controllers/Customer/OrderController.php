@@ -13,6 +13,7 @@ use App\Services\MpesaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -81,10 +82,10 @@ class OrderController extends Controller
     public function store(Request $request)
     {   
         // Log incoming request
-        \Log::info('=== ORDER STORE STARTED ===');
-        \Log::info('Request Data:', $request->all());
-        \Log::info('User ID:', ['id' => Auth::id()]);
-        \Log::info('Authenticated:', ['check' => Auth::check()]);
+        \Illuminate\Support\Facades\Log::info('=== ORDER STORE STARTED ===');
+        \Illuminate\Support\Facades\Log::info('Request Data:', $request->all());
+        \Illuminate\Support\Facades\Log::info('User ID:', ['id' => Auth::id()]);
+        \Illuminate\Support\Facades\Log::info('Authenticated:', ['check' => Auth::check()]);
         
         // Validate with conditional M-Pesa number validation
         $validated = $request->validate([
@@ -103,28 +104,28 @@ class OrderController extends Controller
             'mpesa_number.regex' => 'M-Pesa number must start with 254 and have exactly 12 digits',
         ]);
         
-        \Log::info('Validation passed:', $validated);
+        \Illuminate\Support\Facades\Log::info('Validation passed:', $validated);
 
         $userId = Auth::id();
         
         // Check if user is authenticated
         if (!$userId) {
-            \Log::error('User not authenticated!');
+            \Illuminate\Support\Facades\Log::error('User not authenticated!');
             return back()->with('error', 'You must be logged in to place an order');
         }
 
         // Query cart
         $cartItems = Cart::where('user_id', $userId)
-                        ->with(['product', 'vendor'])
-                        ->get();
+                            ->with(['product', 'vendor'])
+                            ->get();
 
-        \Log::info('Cart query executed', [
+        \Illuminate\Support\Facades\Log::info('Cart query executed', [
             'user_id' => $userId,
             'cart_count' => $cartItems->count(),
         ]);
 
         if ($cartItems->isEmpty()) {
-            \Log::warning('CART EMPTY ERROR', [
+            \Illuminate\Support\Facades\Log::warning('CART EMPTY ERROR', [
                 'user_id' => $userId,
             ]);
             return back()->with('error', 'Your cart is empty');
@@ -132,19 +133,19 @@ class OrderController extends Controller
 
         DB::beginTransaction();
         try {
-            \Log::info('Starting order creation process');
+            \Illuminate\Support\Facades\Log::info('Starting order creation process');
             
             // Group cart items by vendor
             $itemsByVendor = $cartItems->groupBy('vendor_id');
-            \Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
+            \Illuminate\Support\Facades\Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
             
             $orders = []; // Store created orders for response
             
             foreach ($itemsByVendor as $vendorId => $items) {
-                \Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
+                \Illuminate\Support\Facades\Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
                 
                 $vendor = Vendor::findOrFail($vendorId);
-                \Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
+                \Illuminate\Support\Facades\Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
                 
                 // Check if vendor is open
                 if (!$vendor->is_open) {
@@ -157,15 +158,15 @@ class OrderController extends Controller
                     return $item->price * $item->quantity;
                 });
                 
-                \Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
+                \Illuminate\Support\Facades\Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
                 $deliveryFee = $this->calculateDeliveryFee($vendor, $request->delivery_latitude, $request->delivery_longitude);
                 $platformFee = $subtotal * 0.05; // 5% platform fee
                 $total = $subtotal + $deliveryFee + $platformFee;
 
-                \Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
+                \Illuminate\Support\Facades\Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
 
                 // Create order
-                \Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
+                \Illuminate\Support\Facades\Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
                 $order = Order::create([
                     'customer_id' => Auth::id(),
                     'vendor_id' => $vendorId,
@@ -173,8 +174,8 @@ class OrderController extends Controller
                     'sub_county' => $request->sub_county,
                     'ward' => $request->ward,
                     'delivery_address' => $request->delivery_address,
-                    'delivery_latitude' => (string) $request->delivery_latitude,  // Cast to string
-                    'delivery_longitude' => (string) $request->delivery_longitude, // Cast to string
+                    'delivery_latitude' => (string) $request->delivery_latitude,
+                    'delivery_longitude' => (string) $request->delivery_longitude,
                     'subtotal' => $subtotal,
                     'delivery_fee' => $deliveryFee,
                     'platform_fee' => $platformFee,
@@ -186,21 +187,34 @@ class OrderController extends Controller
                     'status' => 'pending',
                 ]);
                 
-                \Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
+                \Illuminate\Support\Facades\Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
 
-                // Create order items
+                // Create order items with admin pricing
                 foreach ($items as $cartItem) {
-                    \Log::info('Creating order item', ['cart_item_id' => $cartItem->id, 'product_id' => $cartItem->product_id]);
+                    // Re-verify the customer price at time of order using admin pricing
+                    $product = Product::find($cartItem->product_id);
+                    $finalPrice = $product->getCustomerPriceForSizeAndVendor(
+                        $cartItem->size ?? null, 
+                        $vendorId
+                    );
+                    
+                    \Illuminate\Support\Facades\Log::info('Creating order item', [
+                        'cart_item_id' => $cartItem->id, 
+                        'product_id' => $cartItem->product_id,
+                        'price_used' => $finalPrice,
+                        'original_price' => $cartItem->price
+                    ]);
+                    
                     $order->items()->create([
                         'product_id' => $cartItem->product_id,
                         'quantity' => $cartItem->quantity,
-                        'unit_price' => $cartItem->price,
+                        'unit_price' => $finalPrice,
                         'size' => $cartItem->size,
-                        'total' => $cartItem->price * $cartItem->quantity,
+                        'total' => $finalPrice * $cartItem->quantity,
                     ]);
                 }
                 
-                \Log::info('Order items created successfully', ['order_id' => $order->id]);
+                \Illuminate\Support\Facades\Log::info('Order items created successfully', ['order_id' => $order->id]);
 
                 // Create initial tracking record with customer's delivery location
                 $order->tracking()->create([
@@ -232,18 +246,15 @@ class OrderController extends Controller
                     
                     $order->tracking()->create($trackingData);
                     
-                    \Log::info('Rider assigned', [
+                    \Illuminate\Support\Facades\Log::info('Rider assigned', [
                         'order_id' => $order->id, 
                         'rider_id' => $rider->id,
-                        'rider_name' => $rider->user->name,
-                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude,
-                        'rider_location' => $rider->current_latitude . ',' . $rider->current_longitude
+                        'rider_name' => $rider->user->name
                     ]);
                 } else {
-                    \Log::warning('No rider available for assignment', [
+                    \Illuminate\Support\Facades\Log::warning('No rider available for assignment', [
                         'order_id' => $order->id,
-                        'vendor_id' => $vendor->id,
-                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude
+                        'vendor_id' => $vendor->id
                     ]);
                     
                     // Create tracking record for no rider available
@@ -261,7 +272,7 @@ class OrderController extends Controller
                 $order->load(['vendor.user', 'customer', 'items.product']);
                 event(new OrderPlaced($order));
 
-                \Log::info('OrderPlaced event dispatched', [
+                \Illuminate\Support\Facades\Log::info('OrderPlaced event dispatched', [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
                     'vendor_id' => $vendor->id
@@ -276,18 +287,18 @@ class OrderController extends Controller
             }
 
             // Clear cart
-            \Log::info('Clearing cart for user', ['user_id' => Auth::id()]);
+            \Illuminate\Support\Facades\Log::info('Clearing cart for user', ['user_id' => Auth::id()]);
             Cart::where('user_id', Auth::id())->delete();
 
             DB::commit();
             
-            \Log::info('Order placement successful, committing transaction');
+            \Illuminate\Support\Facades\Log::info('Order placement successful, committing transaction');
             return redirect()->route('customer.orders')
-                           ->with('success', 'Order placed successfully!');
-                           
+                        ->with('success', 'Order placed successfully!');
+                        
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Exception in order placement', [
+            \Illuminate\Support\Facades\Log::error('Exception in order placement', [
                 'error_message' => $e->getMessage(),
                 'error_code' => $e->getCode(),
                 'error_file' => $e->getFile(),

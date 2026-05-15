@@ -68,8 +68,14 @@
                     <!-- Pricing -->
                     <div class="mb-4 pb-3 border-bottom">
                         <div class="d-flex align-items-baseline gap-3">
-                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">KES {{ number_format($product->final_price, 0) }}</h2>
-                            <span class="text-decoration-line-through text-muted">KES {{ number_format($product->base_price, 0) }}</span>
+                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">
+                                KES {{ number_format($customerPrice ?? $product->final_price, 0) }}
+                            </h2>
+                            @if(($customerPrice ?? $product->final_price) < $product->base_price)
+                                <span class="text-decoration-line-through text-muted">
+                                    KES {{ number_format($product->base_price, 0) }}
+                                </span>
+                            @endif
                         </div>
                         <p class="small text-muted mb-0">{{ $product->description }}</p>
                     </div>
@@ -85,20 +91,32 @@
                         
                         <div class="mb-4">
                             <!-- Size Selection -->
-                            @php
-                                $sizes = json_decode($product->sizes, true) ?? [];
-                            @endphp
-                            @if($sizes)
-                                <div class="mb-4">
-                                    <label class="form-label fw-bold mb-2">Size</label>
-                                    <div class="d-flex gap-2">
-                                        @foreach($sizes as $index => $size)
-                                            <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
-                                            <label class="btn btn-outline-secondary" for="size_{{ $index }}">{{ $size }}</label>
-                                        @endforeach
+                                @php
+                                    $sizes = json_decode($product->sizes, true) ?? [];
+                                    $sizePrices = json_decode($product->size_prices, true) ?? [];
+                                @endphp
+
+                                @if(!empty($sizes))
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold mb-2">Size</label>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @foreach($sizes as $index => $size)
+                                                <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" 
+                                                    value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
+                                                <label class="btn btn-outline-secondary" for="size_{{ $index }}">
+                                                    {{ $size }}
+                                                    @php
+                                                        // Use admin price if available, otherwise use original size price
+                                                        $sizePrice = isset($sizePricesWithMarkup[$size]) 
+                                                            ? $sizePricesWithMarkup[$size] 
+                                                            : ($sizePrices[$size] ?? $customerPrice ?? $product->final_price);
+                                                    @endphp
+                                                    <br><small class="text-success">KES {{ number_format($sizePrice, 0) }}</small>
+                                                </label>
+                                            @endforeach
+                                        </div>
                                     </div>
-                                </div>
-                            @endif
+                                @endif
 
                             <!-- Quantity -->
                             <div class="mb-4">
@@ -114,7 +132,7 @@
                             <!-- Total Price -->
                             <div class="mb-4 p-3 rounded" style="background-color: #f8f9fa;">
                                 <p class="text-muted mb-2">Total Price:</p>
-                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($product->final_price, 0) }}</span></h5>
+                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($customerPrice ?? $product->final_price, 0) }}</span></h5>
                             </div>
                         </div>
 
@@ -293,10 +311,10 @@
 <script>
     // Get price data from product
     @php
-        $sizePrices = json_decode($product->size_prices, true) ?? [];
+        $sizePricesForJs = !empty($sizePricesWithMarkup) ? $sizePricesWithMarkup : (json_decode($product->size_prices, true) ?? []);
     @endphp
-    const sizePrices = {!! json_encode($sizePrices) !!};
-    const basePrice = {{ $product->final_price }};
+    const sizePrices = {!! json_encode($sizePricesForJs) !!};
+    const basePrice = {{ $customerPrice ?? $product->final_price }};
 
     function updateTotalPrice() {
         const quantity = parseInt(document.getElementById('quantity').value) || 1;

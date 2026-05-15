@@ -96,4 +96,62 @@ class Product extends Model
         }
         return $this->final_price;
     }
+
+    /**
+     * Get the customer-visible price for a specific vendor
+     */
+    public function getCustomerPriceForVendor($vendorId)
+    {
+        // Check if there's an admin price record for this product and vendor
+        $adminPrice = \App\Models\AdminPrice::where('product_id', $this->id)
+            ->where('vendor_id', $vendorId)
+            ->where('is_active', true)
+            ->first();
+        
+        if ($adminPrice && $adminPrice->customer_visible_price) {
+            return $adminPrice->customer_visible_price;
+        }
+        
+        // Fallback to product's final price
+        return $this->final_price;
+    }
+
+    /**
+     * Get the customer-visible price with vendor context for size-based pricing
+     */
+    public function getCustomerPriceForSizeAndVendor($size, $vendorId)
+    {
+        // First check if there's an admin price override
+        $adminPrice = \App\Models\AdminPrice::where('product_id', $this->id)
+            ->where('vendor_id', $vendorId)
+            ->where('is_active', true)
+            ->first();
+        
+        if ($adminPrice && $adminPrice->customer_visible_price) {
+            return $adminPrice->customer_visible_price;
+        }
+        
+        // Fallback to size-based pricing
+        if ($this->size_prices && isset($this->size_prices[$size])) {
+            return $this->size_prices[$size];
+        }
+        
+        return $this->final_price;
+    }
+
+    /**
+     * Get sizes as array
+     */
+    public function getSizesArrayAttribute()
+    {
+        return json_decode($this->sizes, true) ?? [];
+    }
+
+    /**
+     * Get size prices as array
+     */
+    public function getSizePricesArrayAttribute()
+    {
+        return json_decode($this->size_prices, true) ?? [];
+    }
 }
