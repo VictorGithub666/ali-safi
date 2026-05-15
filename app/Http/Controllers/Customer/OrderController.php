@@ -165,7 +165,7 @@ class OrderController extends Controller
 
                 \Illuminate\Support\Facades\Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
 
-                // Create order
+                // Create order (NO RIDER ASSIGNMENT YET)
                 \Illuminate\Support\Facades\Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
                 $order = Order::create([
                     'customer_id' => Auth::id(),
@@ -185,6 +185,7 @@ class OrderController extends Controller
                     'mpesa_number' => $request->payment_method === 'mpesa' ? $request->mpesa_number : null,
                     'special_instructions' => $request->special_instructions,
                     'status' => 'pending',
+                    // 'rider_id' => null, // Explicitly set rider_id to null
                 ]);
                 
                 \Illuminate\Support\Facades\Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
@@ -219,56 +220,20 @@ class OrderController extends Controller
                 // Create initial tracking record with customer's delivery location
                 $order->tracking()->create([
                     'status' => 'pending',
-                    'notes' => 'Order placed successfully',
+                    'notes' => 'Order placed successfully. Waiting for vendor confirmation.',
                     'latitude' => $request->delivery_latitude,
                     'longitude' => $request->delivery_longitude,
                     'updated_by' => Auth::id(),
                     'updated_by_type' => 'customer',
                 ]);
 
-                // Match with nearest available rider based on vendor location
-                $rider = $this->matchingService->findNearestRider($vendor);
-                if ($rider) {
-                    $order->update(['rider_id' => $rider->id]);
-                    
-                    // Create tracking record for rider assignment with rider's location
-                    $trackingData = [
-                        'status' => 'rider_assigned',
-                        'notes' => "Rider {$rider->user->name} has been assigned to your order",
-                        'updated_by' => Auth::id(),
-                        'updated_by_type' => 'system',
-                    ];
-                    
-                    if ($rider->current_latitude && $rider->current_longitude) {
-                        $trackingData['latitude'] = $rider->current_latitude;
-                        $trackingData['longitude'] = $rider->current_longitude;
-                    }
-                    
-                    $order->tracking()->create($trackingData);
-                    
-                    \Illuminate\Support\Facades\Log::info('Rider assigned', [
-                        'order_id' => $order->id, 
-                        'rider_id' => $rider->id,
-                        'rider_name' => $rider->user->name
-                    ]);
-                } else {
-                    \Illuminate\Support\Facades\Log::warning('No rider available for assignment', [
-                        'order_id' => $order->id,
-                        'vendor_id' => $vendor->id
-                    ]);
-                    
-                    // Create tracking record for no rider available
-                    $order->tracking()->create([
-                        'status' => 'pending',
-                        'notes' => 'Looking for an available rider...',
-                        'latitude' => $vendor->latitude,
-                        'longitude' => $vendor->longitude,
-                        'updated_by' => Auth::id(),
-                        'updated_by_type' => 'system',
-                    ]);
-                }
+                // ============================================================
+                // IMPORTANT: RIDER ASSIGNMENT REMOVED FROM THIS LOCATION
+                // Riders will only be assigned when the order status becomes 'ready_for_pickup'
+                // and a rider manually accepts the order from their dashboard.
+                // ============================================================
 
-                // Dispatch OrderPlaced event
+                // Dispatch OrderPlaced event to notify vendor
                 $order->load(['vendor.user', 'customer', 'items.product']);
                 event(new OrderPlaced($order));
 

@@ -6,7 +6,7 @@
  * 
  * Project: ali-safi
  * Path: /home/victor/Documents/Diamond Edge Tech/ali-safi
- * Date: 2026-05-15 07:31:20
+ * Date: 2026-05-15 10:08:44
  * 
  * This file contains ALL application files for DeepSeek analysis:
  * - Controllers, Models, Views, Migrations
@@ -394,7 +394,7 @@ class AdminCustomerController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Admin/AdminFinanceController.php
-📏 Size: 6359 bytes
+📏 Size: 11915 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -403,8 +403,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Models\AdminCommission;
 use App\Models\Vendor;
+use App\Models\Order;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminFinanceController extends Controller
 {
@@ -419,20 +421,31 @@ class AdminFinanceController extends Controller
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
 
-        $totalOrders = $query->sum('order_subtotal');
-        $totalProfit = $query->sum('admin_profit');
+        // Use only settled commissions for accurate totals
+        $settledQuery = clone $query;
+        $settledQuery->where('status', 'settled');
+        
+        $totalOrders = $settledQuery->sum('order_subtotal');
+        $totalProfit = $settledQuery->sum('admin_profit');
         $profitMargin = $totalOrders > 0 ? ($totalProfit / $totalOrders) * 100 : 0;
-        $orderCount = $query->count();
+        $orderCount = $settledQuery->count();
 
-        $platformCommission = $query->sum('platform_commission');
-        $deliveryFees = $query->sum('delivery_fee');
-        $riderFees = $query->sum('rider_fee');
+        $platformCommission = $settledQuery->sum('platform_commission');
+        $deliveryFees = $settledQuery->sum('delivery_fee');
+        $riderFees = $settledQuery->sum('rider_fee');
 
+        // Get all transactions for the table (including pending for visibility)
         $transactions = $query->with('vendor', 'order')->latest()->paginate(20);
+
+        // Get summary by status
+        $pendingCount = AdminCommission::where('status', 'pending')->count();
+        $settledCount = AdminCommission::where('status', 'settled')->count();
+        $cancelledCount = AdminCommission::where('status', 'cancelled')->count();
 
         return view('admin.finances.dashboard', compact(
             'totalOrders', 'totalProfit', 'profitMargin', 'orderCount',
-            'platformCommission', 'deliveryFees', 'riderFees', 'transactions'
+            'platformCommission', 'deliveryFees', 'riderFees', 'transactions',
+            'pendingCount', 'settledCount', 'cancelledCount'
         ));
     }
 
@@ -447,16 +460,22 @@ class AdminFinanceController extends Controller
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
 
-        $totalOrders = $query->sum('order_subtotal');
-        $totalProfit = $query->sum('admin_profit');
+        // Only settled commissions
+        $settledQuery = clone $query;
+        $settledQuery->where('status', 'settled');
+
+        $totalOrders = $settledQuery->sum('order_subtotal');
+        $totalProfit = $settledQuery->sum('admin_profit');
         $avgMargin = $totalOrders > 0 ? ($totalProfit / $totalOrders) * 100 : 0;
-        $transactionCount = $query->count();
+        $transactionCount = $settledQuery->count();
 
         $vendors = Vendor::with('user')->get();
         $marginData = [];
 
         foreach ($vendors as $vendor) {
-            $vendorCommissions = AdminCommission::where('vendor_id', $vendor->id)->get();
+            $vendorCommissions = AdminCommission::where('vendor_id', $vendor->id)
+                ->where('status', 'settled')
+                ->get();
             $vendorOrderTotal = $vendorCommissions->sum('order_subtotal');
             $vendorProfit = $vendorCommissions->sum('platform_commission');
             $vendorMargin = $vendorOrderTotal > 0 ? ($vendorProfit / $vendorOrderTotal) * 100 : 0;
@@ -476,7 +495,7 @@ class AdminFinanceController extends Controller
 
     public function reports(Request $request)
     {
-        $query = AdminCommission::query();
+        $query = AdminCommission::with('vendor', 'order');
 
         if ($request->filled('vendor_id')) {
             $query->where('vendor_id', $request->get('vendor_id'));
@@ -490,11 +509,28 @@ class AdminFinanceController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->whereHas('order', function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%");
+            })->orWhereHas('vendor', function ($q) use ($search) {
+                $q->where('business_name', 'like', "%{$search}%");
+            });
+        }
 
-        $transactions = $query->with('vendor', 'order')->latest()->paginate(15);
+        $transactions = $query->latest()->paginate(15);
         $vendors = Vendor::pluck('business_name', 'id');
+        
+        // Store query parameters for download
+        $filters = [
+            'vendor_id' => $request->get('vendor_id'),
+            'status' => $request->get('status'),
+            'date_from' => $request->get('date_from'),
+            'date_to' => $request->get('date_to'),
+            'search' => $request->get('search'),
+        ];
 
-        return view('admin.finances.reports', compact('transactions', 'vendors'));
+        return view('admin.finances.reports', compact('transactions', 'vendors', 'filters'));
     }
 
     public function downloadReport(Request $request)
@@ -513,25 +549,41 @@ class AdminFinanceController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->whereHas('order', function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%");
+            })->orWhereHas('vendor', function ($q) use ($search) {
+                $q->where('business_name', 'like', "%{$search}%");
+            });
+        }
 
         $transactions = $query->latest()->get();
 
+        $format = $request->get('format', 'csv');
+        
+        if ($format === 'pdf') {
+            return $this->downloadPDFReport($transactions, $request);
+        }
+
+        // CSV Download
         $filename = 'admin_report_' . now()->format('Y-m-d_H-i-s') . '.csv';
         $handle = fopen('php://temp/maxmemory:5000000', 'r+');
 
-        fputcsv($handle, ['Date', 'Order ID', 'Vendor', 'Order Total', 'Platform Commission', 'Delivery Fee', 'Rider Fee', 'Admin Profit', 'Status']);
+        fputcsv($handle, ['Date', 'Order ID', 'Order #', 'Vendor', 'Order Total', 'Platform Commission', 'Delivery Fee', 'Rider Fee', 'Admin Profit', 'Status']);
 
         foreach ($transactions as $trans) {
             fputcsv($handle, [
                 $trans->created_at->format('Y-m-d H:i:s'),
                 $trans->order->id ?? 'N/A',
+                $trans->order->order_number ?? 'N/A',
                 $trans->vendor->business_name ?? 'N/A',
-                $trans->order_subtotal,
-                $trans->platform_commission,
-                $trans->delivery_fee,
-                $trans->rider_fee,
-                $trans->admin_profit,
-                $trans->status
+                number_format($trans->order_subtotal, 2),
+                number_format($trans->platform_commission, 2),
+                number_format($trans->delivery_fee, 2),
+                number_format($trans->rider_fee, 2),
+                number_format($trans->admin_profit, 2),
+                ucfirst($trans->status)
             ]);
         }
 
@@ -545,16 +597,42 @@ class AdminFinanceController extends Controller
         ]);
     }
 
+    /**
+     * Download PDF report
+     */
+    protected function downloadPDFReport($transactions, $request)
+    {
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.finances.pdf-report', [
+            'transactions' => $transactions,
+            'filters' => [
+                'vendor_id' => $request->get('vendor_id'),
+                'status' => $request->get('status'),
+                'date_from' => $request->get('date_from'),
+                'date_to' => $request->get('date_to'),
+                'search' => $request->get('search'),
+            ],
+            'generated_at' => now(),
+            'total_profit' => $transactions->sum('admin_profit'),
+            'total_orders_value' => $transactions->sum('order_subtotal'),
+        ]);
+
+        $filename = 'admin_report_' . now()->format('Y-m-d_H-i-s') . '.pdf';
+        
+        return $pdf->download($filename);
+    }
+
     public function vendorSettlement(Request $request)
     {
         $vendors = Vendor::with('user', 'orders')->withCount('orders')->paginate(15);
         $settlementData = [];
 
         foreach ($vendors as $vendor) {
-            $commissions = AdminCommission::where('vendor_id', $vendor->id)->get();
+            $commissions = AdminCommission::where('vendor_id', $vendor->id)
+                ->where('status', 'settled')
+                ->get();
             $totalOrders = $commissions->sum('order_subtotal');
             $commission = $commissions->sum('platform_commission');
-            $payout = $vendor->orders->count() > 0 ? $totalOrders - $commission : 0;
+            $payout = $totalOrders - $commission;
 
             $pendingOrders = $vendor->orders()
                 ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready_for_pickup'])
@@ -570,8 +648,63 @@ class AdminFinanceController extends Controller
 
         return view('admin.finances.vendor-settlement', compact('vendors', 'settlementData'));
     }
-}
 
+    /**
+     * Sync all past orders to create AdminCommission records
+     */
+    public function syncOrders()
+    {
+        $orders = Order::whereDoesntHave('adminCommission')->get();
+        $synced = 0;
+        $errors = [];
+        
+        foreach ($orders as $order) {
+            try {
+                $commissionPercentage = \App\Models\Setting::get('platform_fee_percentage', 5);
+                
+                $platformCommission = $order->subtotal * ($commissionPercentage / 100);
+                $riderFee = $order->rider_id ? $order->delivery_fee : 0;
+                $adminProfit = $platformCommission + $order->delivery_fee + $riderFee;
+                $vendorAmount = $order->subtotal - $platformCommission;
+                
+                $status = 'pending';
+                if ($order->status === 'delivered') {
+                    $status = 'settled';
+                } elseif ($order->status === 'cancelled') {
+                    $status = 'cancelled';
+                }
+
+                AdminCommission::create([
+                    'vendor_id' => $order->vendor_id,
+                    'order_id' => $order->id,
+                    'order_subtotal' => $order->subtotal,
+                    'vendor_amount' => $vendorAmount,
+                    'platform_commission' => $platformCommission,
+                    'commission_percentage' => $commissionPercentage,
+                    'delivery_fee' => $order->delivery_fee,
+                    'rider_fee' => $riderFee,
+                    'admin_profit' => $adminProfit,
+                    'status' => $status,
+                    'created_at' => $order->created_at, // ADD THIS - preserve original date
+                    'updated_at' => $order->updated_at, // ADD THIS - preserve original date
+                ]);
+                
+                $synced++;
+                
+            } catch (\Exception $e) {
+                $errors[] = "Order #{$order->id}: " . $e->getMessage();
+            }
+        }
+        
+        $message = "Synced {$synced} orders to finance records.";
+        if (!empty($errors)) {
+            $message .= " Errors: " . implode(', ', $errors);
+        }
+        
+        return redirect()->route('admin.finances.dashboard')
+            ->with('success', $message);
+    }
+}
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Admin/AdminOrderAssignmentController.php
@@ -2389,7 +2522,7 @@ class Controller extends BaseController
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Customer/CartController.php
-📏 Size: 5186 bytes
+📏 Size: 5115 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -2459,13 +2592,9 @@ class CartController extends Controller
             return redirect()->back()->with('error', 'Insufficient stock available.');
         }
 
-        $price = $product->getPriceForSize($validated['size'] ?? null);
+        // Get customer price from admin pricing
+        $price = $product->getCustomerPriceForSizeAndVendor($validated['size'] ?? null, $validated['vendor_id']);
         
-        // Use custom vendor price if set
-        if ($vendorProduct->pivot->custom_price) {
-            $price = $vendorProduct->pivot->custom_price;
-        }
-
         // Check if product already in cart
         $existingCartItem = Cart::where('user_id', auth()->id())
             ->where('product_id', $validated['product_id'])
@@ -2553,7 +2682,7 @@ class CartController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Customer/OrderController.php
-📏 Size: 24575 bytes
+📏 Size: 23984 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -2571,6 +2700,7 @@ use App\Services\MpesaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -2639,10 +2769,10 @@ class OrderController extends Controller
     public function store(Request $request)
     {   
         // Log incoming request
-        \Log::info('=== ORDER STORE STARTED ===');
-        \Log::info('Request Data:', $request->all());
-        \Log::info('User ID:', ['id' => Auth::id()]);
-        \Log::info('Authenticated:', ['check' => Auth::check()]);
+        \Illuminate\Support\Facades\Log::info('=== ORDER STORE STARTED ===');
+        \Illuminate\Support\Facades\Log::info('Request Data:', $request->all());
+        \Illuminate\Support\Facades\Log::info('User ID:', ['id' => Auth::id()]);
+        \Illuminate\Support\Facades\Log::info('Authenticated:', ['check' => Auth::check()]);
         
         // Validate with conditional M-Pesa number validation
         $validated = $request->validate([
@@ -2661,28 +2791,28 @@ class OrderController extends Controller
             'mpesa_number.regex' => 'M-Pesa number must start with 254 and have exactly 12 digits',
         ]);
         
-        \Log::info('Validation passed:', $validated);
+        \Illuminate\Support\Facades\Log::info('Validation passed:', $validated);
 
         $userId = Auth::id();
         
         // Check if user is authenticated
         if (!$userId) {
-            \Log::error('User not authenticated!');
+            \Illuminate\Support\Facades\Log::error('User not authenticated!');
             return back()->with('error', 'You must be logged in to place an order');
         }
 
         // Query cart
         $cartItems = Cart::where('user_id', $userId)
-                        ->with(['product', 'vendor'])
-                        ->get();
+                            ->with(['product', 'vendor'])
+                            ->get();
 
-        \Log::info('Cart query executed', [
+        \Illuminate\Support\Facades\Log::info('Cart query executed', [
             'user_id' => $userId,
             'cart_count' => $cartItems->count(),
         ]);
 
         if ($cartItems->isEmpty()) {
-            \Log::warning('CART EMPTY ERROR', [
+            \Illuminate\Support\Facades\Log::warning('CART EMPTY ERROR', [
                 'user_id' => $userId,
             ]);
             return back()->with('error', 'Your cart is empty');
@@ -2690,19 +2820,19 @@ class OrderController extends Controller
 
         DB::beginTransaction();
         try {
-            \Log::info('Starting order creation process');
+            \Illuminate\Support\Facades\Log::info('Starting order creation process');
             
             // Group cart items by vendor
             $itemsByVendor = $cartItems->groupBy('vendor_id');
-            \Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
+            \Illuminate\Support\Facades\Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
             
             $orders = []; // Store created orders for response
             
             foreach ($itemsByVendor as $vendorId => $items) {
-                \Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
+                \Illuminate\Support\Facades\Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
                 
                 $vendor = Vendor::findOrFail($vendorId);
-                \Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
+                \Illuminate\Support\Facades\Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
                 
                 // Check if vendor is open
                 if (!$vendor->is_open) {
@@ -2715,15 +2845,15 @@ class OrderController extends Controller
                     return $item->price * $item->quantity;
                 });
                 
-                \Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
+                \Illuminate\Support\Facades\Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
                 $deliveryFee = $this->calculateDeliveryFee($vendor, $request->delivery_latitude, $request->delivery_longitude);
                 $platformFee = $subtotal * 0.05; // 5% platform fee
                 $total = $subtotal + $deliveryFee + $platformFee;
 
-                \Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
+                \Illuminate\Support\Facades\Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
 
-                // Create order
-                \Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
+                // Create order (NO RIDER ASSIGNMENT YET)
+                \Illuminate\Support\Facades\Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
                 $order = Order::create([
                     'customer_id' => Auth::id(),
                     'vendor_id' => $vendorId,
@@ -2731,8 +2861,8 @@ class OrderController extends Controller
                     'sub_county' => $request->sub_county,
                     'ward' => $request->ward,
                     'delivery_address' => $request->delivery_address,
-                    'delivery_latitude' => (string) $request->delivery_latitude,  // Cast to string
-                    'delivery_longitude' => (string) $request->delivery_longitude, // Cast to string
+                    'delivery_latitude' => (string) $request->delivery_latitude,
+                    'delivery_longitude' => (string) $request->delivery_longitude,
                     'subtotal' => $subtotal,
                     'delivery_fee' => $deliveryFee,
                     'platform_fee' => $platformFee,
@@ -2742,84 +2872,59 @@ class OrderController extends Controller
                     'mpesa_number' => $request->payment_method === 'mpesa' ? $request->mpesa_number : null,
                     'special_instructions' => $request->special_instructions,
                     'status' => 'pending',
+                    // 'rider_id' => null, // Explicitly set rider_id to null
                 ]);
                 
-                \Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
+                \Illuminate\Support\Facades\Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
 
-                // Create order items
+                // Create order items with admin pricing
                 foreach ($items as $cartItem) {
-                    \Log::info('Creating order item', ['cart_item_id' => $cartItem->id, 'product_id' => $cartItem->product_id]);
+                    // Re-verify the customer price at time of order using admin pricing
+                    $product = Product::find($cartItem->product_id);
+                    $finalPrice = $product->getCustomerPriceForSizeAndVendor(
+                        $cartItem->size ?? null, 
+                        $vendorId
+                    );
+                    
+                    \Illuminate\Support\Facades\Log::info('Creating order item', [
+                        'cart_item_id' => $cartItem->id, 
+                        'product_id' => $cartItem->product_id,
+                        'price_used' => $finalPrice,
+                        'original_price' => $cartItem->price
+                    ]);
+                    
                     $order->items()->create([
                         'product_id' => $cartItem->product_id,
                         'quantity' => $cartItem->quantity,
-                        'unit_price' => $cartItem->price,
+                        'unit_price' => $finalPrice,
                         'size' => $cartItem->size,
-                        'total' => $cartItem->price * $cartItem->quantity,
+                        'total' => $finalPrice * $cartItem->quantity,
                     ]);
                 }
                 
-                \Log::info('Order items created successfully', ['order_id' => $order->id]);
+                \Illuminate\Support\Facades\Log::info('Order items created successfully', ['order_id' => $order->id]);
 
                 // Create initial tracking record with customer's delivery location
                 $order->tracking()->create([
                     'status' => 'pending',
-                    'notes' => 'Order placed successfully',
+                    'notes' => 'Order placed successfully. Waiting for vendor confirmation.',
                     'latitude' => $request->delivery_latitude,
                     'longitude' => $request->delivery_longitude,
                     'updated_by' => Auth::id(),
                     'updated_by_type' => 'customer',
                 ]);
 
-                // Match with nearest available rider based on vendor location
-                $rider = $this->matchingService->findNearestRider($vendor);
-                if ($rider) {
-                    $order->update(['rider_id' => $rider->id]);
-                    
-                    // Create tracking record for rider assignment with rider's location
-                    $trackingData = [
-                        'status' => 'rider_assigned',
-                        'notes' => "Rider {$rider->user->name} has been assigned to your order",
-                        'updated_by' => Auth::id(),
-                        'updated_by_type' => 'system',
-                    ];
-                    
-                    if ($rider->current_latitude && $rider->current_longitude) {
-                        $trackingData['latitude'] = $rider->current_latitude;
-                        $trackingData['longitude'] = $rider->current_longitude;
-                    }
-                    
-                    $order->tracking()->create($trackingData);
-                    
-                    \Log::info('Rider assigned', [
-                        'order_id' => $order->id, 
-                        'rider_id' => $rider->id,
-                        'rider_name' => $rider->user->name,
-                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude,
-                        'rider_location' => $rider->current_latitude . ',' . $rider->current_longitude
-                    ]);
-                } else {
-                    \Log::warning('No rider available for assignment', [
-                        'order_id' => $order->id,
-                        'vendor_id' => $vendor->id,
-                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude
-                    ]);
-                    
-                    // Create tracking record for no rider available
-                    $order->tracking()->create([
-                        'status' => 'pending',
-                        'notes' => 'Looking for an available rider...',
-                        'latitude' => $vendor->latitude,
-                        'longitude' => $vendor->longitude,
-                        'updated_by' => Auth::id(),
-                        'updated_by_type' => 'system',
-                    ]);
-                }
+                // ============================================================
+                // IMPORTANT: RIDER ASSIGNMENT REMOVED FROM THIS LOCATION
+                // Riders will only be assigned when the order status becomes 'ready_for_pickup'
+                // and a rider manually accepts the order from their dashboard.
+                // ============================================================
 
-                // Dispatch OrderPlaced event
+                // Dispatch OrderPlaced event to notify vendor
                 $order->load(['vendor.user', 'customer', 'items.product']);
                 event(new OrderPlaced($order));
 
-                \Log::info('OrderPlaced event dispatched', [
+                \Illuminate\Support\Facades\Log::info('OrderPlaced event dispatched', [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
                     'vendor_id' => $vendor->id
@@ -2834,18 +2939,18 @@ class OrderController extends Controller
             }
 
             // Clear cart
-            \Log::info('Clearing cart for user', ['user_id' => Auth::id()]);
+            \Illuminate\Support\Facades\Log::info('Clearing cart for user', ['user_id' => Auth::id()]);
             Cart::where('user_id', Auth::id())->delete();
 
             DB::commit();
             
-            \Log::info('Order placement successful, committing transaction');
+            \Illuminate\Support\Facades\Log::info('Order placement successful, committing transaction');
             return redirect()->route('customer.orders')
-                           ->with('success', 'Order placed successfully!');
-                           
+                        ->with('success', 'Order placed successfully!');
+                        
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Exception in order placement', [
+            \Illuminate\Support\Facades\Log::error('Exception in order placement', [
                 'error_message' => $e->getMessage(),
                 'error_code' => $e->getCode(),
                 'error_file' => $e->getFile(),
@@ -3186,7 +3291,7 @@ class OrderController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Customer/ProductController.php
-📏 Size: 2919 bytes
+📏 Size: 4636 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -3206,7 +3311,7 @@ class ProductController extends Controller
         $categories = Category::where('is_active', true)->get();
         $category = request('category');
         $search = request('search');
-        $nearby = request('nearby'); // 0 for all, 1 for nearby only
+        $nearby = request('nearby');
         $userLat = request('lat');
         $userLng = request('lng');
         
@@ -3220,23 +3325,33 @@ class ProductController extends Controller
             $query->where('category_id', $category);
         }
         
-        // Search by product name or description
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                ->orWhere('description', 'like', "%{$search}%");
             });
         }
         
-        // Filter by nearby vendors (within ~1km radius)
         if ($nearby && $userLat && $userLng) {
             $query->whereHas('vendors', function($q) use ($userLat, $userLng) {
                 $q->where('is_open', true)
-                  ->whereRaw("(6371 * acos(cos(radians($userLat)) * cos(radians(latitude)) * cos(radians(longitude) - radians($userLng)) + sin(radians($userLat)) * sin(radians(latitude)))) <= 1");
+                ->whereRaw("(6371 * acos(cos(radians($userLat)) * cos(radians(latitude)) * cos(radians(longitude) - radians($userLng)) + sin(radians($userLat)) * sin(radians(latitude)))) <= 1");
             });
         }
         
         $products = $query->paginate(12);
+        
+        // Get the first vendor for each product and calculate customer price
+        foreach ($products as $product) {
+            $vendor = $product->vendors()->first();
+            if ($vendor) {
+                $product->customer_price = $product->getCustomerPriceForVendor($vendor->id);
+                $product->vendor_id_for_price = $vendor->id;
+            } else {
+                $product->customer_price = $product->final_price;
+                $product->vendor_id_for_price = null;
+            }
+        }
         
         return view('customer.products.index', [
             'products' => $products,
@@ -3257,8 +3372,38 @@ class ProductController extends Controller
                 ->with('error', 'This product is currently unavailable.');
         }
         
+        // Get customer price from admin pricing
+        $customerPrice = $product->getCustomerPriceForVendor($vendor->id);
+        
+        // Also get size-based prices with admin markup if applicable
+        $sizePricesWithMarkup = [];
+        
+        // Decode the JSON string to array
+        $sizePrices = json_decode($product->size_prices, true);
+        $sizesArray = json_decode($product->sizes, true);
+        
+        if ($sizePrices && is_array($sizePrices)) {
+            foreach ($sizePrices as $size => $price) {
+                $adminPrice = \App\Models\AdminPrice::where('product_id', $product->id)
+                    ->where('vendor_id', $vendor->id)
+                    ->where('is_active', true)
+                    ->first();
+                
+                if ($adminPrice && $adminPrice->customer_visible_price) {
+                    // If admin has set a fixed customer price, use that for all sizes
+                    $sizePricesWithMarkup[$size] = $adminPrice->customer_visible_price;
+                } else {
+                    $sizePricesWithMarkup[$size] = $price;
+                }
+            }
+        }
+        
         return view('customer.products.show', [
             'product' => $product,
+            'vendor' => $vendor,
+            'customerPrice' => $customerPrice,
+            'sizePricesWithMarkup' => $sizePricesWithMarkup,
+            'sizesArray' => $sizesArray,
         ]);
     }
 
@@ -5422,7 +5567,7 @@ class AdminCustomerController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Admin/AdminFinanceController.php
-📏 Size: 6359 bytes
+📏 Size: 11915 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -5431,8 +5576,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Models\AdminCommission;
 use App\Models\Vendor;
+use App\Models\Order;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminFinanceController extends Controller
 {
@@ -5447,20 +5594,31 @@ class AdminFinanceController extends Controller
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
 
-        $totalOrders = $query->sum('order_subtotal');
-        $totalProfit = $query->sum('admin_profit');
+        // Use only settled commissions for accurate totals
+        $settledQuery = clone $query;
+        $settledQuery->where('status', 'settled');
+        
+        $totalOrders = $settledQuery->sum('order_subtotal');
+        $totalProfit = $settledQuery->sum('admin_profit');
         $profitMargin = $totalOrders > 0 ? ($totalProfit / $totalOrders) * 100 : 0;
-        $orderCount = $query->count();
+        $orderCount = $settledQuery->count();
 
-        $platformCommission = $query->sum('platform_commission');
-        $deliveryFees = $query->sum('delivery_fee');
-        $riderFees = $query->sum('rider_fee');
+        $platformCommission = $settledQuery->sum('platform_commission');
+        $deliveryFees = $settledQuery->sum('delivery_fee');
+        $riderFees = $settledQuery->sum('rider_fee');
 
+        // Get all transactions for the table (including pending for visibility)
         $transactions = $query->with('vendor', 'order')->latest()->paginate(20);
+
+        // Get summary by status
+        $pendingCount = AdminCommission::where('status', 'pending')->count();
+        $settledCount = AdminCommission::where('status', 'settled')->count();
+        $cancelledCount = AdminCommission::where('status', 'cancelled')->count();
 
         return view('admin.finances.dashboard', compact(
             'totalOrders', 'totalProfit', 'profitMargin', 'orderCount',
-            'platformCommission', 'deliveryFees', 'riderFees', 'transactions'
+            'platformCommission', 'deliveryFees', 'riderFees', 'transactions',
+            'pendingCount', 'settledCount', 'cancelledCount'
         ));
     }
 
@@ -5475,16 +5633,22 @@ class AdminFinanceController extends Controller
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
 
-        $totalOrders = $query->sum('order_subtotal');
-        $totalProfit = $query->sum('admin_profit');
+        // Only settled commissions
+        $settledQuery = clone $query;
+        $settledQuery->where('status', 'settled');
+
+        $totalOrders = $settledQuery->sum('order_subtotal');
+        $totalProfit = $settledQuery->sum('admin_profit');
         $avgMargin = $totalOrders > 0 ? ($totalProfit / $totalOrders) * 100 : 0;
-        $transactionCount = $query->count();
+        $transactionCount = $settledQuery->count();
 
         $vendors = Vendor::with('user')->get();
         $marginData = [];
 
         foreach ($vendors as $vendor) {
-            $vendorCommissions = AdminCommission::where('vendor_id', $vendor->id)->get();
+            $vendorCommissions = AdminCommission::where('vendor_id', $vendor->id)
+                ->where('status', 'settled')
+                ->get();
             $vendorOrderTotal = $vendorCommissions->sum('order_subtotal');
             $vendorProfit = $vendorCommissions->sum('platform_commission');
             $vendorMargin = $vendorOrderTotal > 0 ? ($vendorProfit / $vendorOrderTotal) * 100 : 0;
@@ -5504,7 +5668,7 @@ class AdminFinanceController extends Controller
 
     public function reports(Request $request)
     {
-        $query = AdminCommission::query();
+        $query = AdminCommission::with('vendor', 'order');
 
         if ($request->filled('vendor_id')) {
             $query->where('vendor_id', $request->get('vendor_id'));
@@ -5518,11 +5682,28 @@ class AdminFinanceController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->whereHas('order', function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%");
+            })->orWhereHas('vendor', function ($q) use ($search) {
+                $q->where('business_name', 'like', "%{$search}%");
+            });
+        }
 
-        $transactions = $query->with('vendor', 'order')->latest()->paginate(15);
+        $transactions = $query->latest()->paginate(15);
         $vendors = Vendor::pluck('business_name', 'id');
+        
+        // Store query parameters for download
+        $filters = [
+            'vendor_id' => $request->get('vendor_id'),
+            'status' => $request->get('status'),
+            'date_from' => $request->get('date_from'),
+            'date_to' => $request->get('date_to'),
+            'search' => $request->get('search'),
+        ];
 
-        return view('admin.finances.reports', compact('transactions', 'vendors'));
+        return view('admin.finances.reports', compact('transactions', 'vendors', 'filters'));
     }
 
     public function downloadReport(Request $request)
@@ -5541,25 +5722,41 @@ class AdminFinanceController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->whereHas('order', function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%");
+            })->orWhereHas('vendor', function ($q) use ($search) {
+                $q->where('business_name', 'like', "%{$search}%");
+            });
+        }
 
         $transactions = $query->latest()->get();
 
+        $format = $request->get('format', 'csv');
+        
+        if ($format === 'pdf') {
+            return $this->downloadPDFReport($transactions, $request);
+        }
+
+        // CSV Download
         $filename = 'admin_report_' . now()->format('Y-m-d_H-i-s') . '.csv';
         $handle = fopen('php://temp/maxmemory:5000000', 'r+');
 
-        fputcsv($handle, ['Date', 'Order ID', 'Vendor', 'Order Total', 'Platform Commission', 'Delivery Fee', 'Rider Fee', 'Admin Profit', 'Status']);
+        fputcsv($handle, ['Date', 'Order ID', 'Order #', 'Vendor', 'Order Total', 'Platform Commission', 'Delivery Fee', 'Rider Fee', 'Admin Profit', 'Status']);
 
         foreach ($transactions as $trans) {
             fputcsv($handle, [
                 $trans->created_at->format('Y-m-d H:i:s'),
                 $trans->order->id ?? 'N/A',
+                $trans->order->order_number ?? 'N/A',
                 $trans->vendor->business_name ?? 'N/A',
-                $trans->order_subtotal,
-                $trans->platform_commission,
-                $trans->delivery_fee,
-                $trans->rider_fee,
-                $trans->admin_profit,
-                $trans->status
+                number_format($trans->order_subtotal, 2),
+                number_format($trans->platform_commission, 2),
+                number_format($trans->delivery_fee, 2),
+                number_format($trans->rider_fee, 2),
+                number_format($trans->admin_profit, 2),
+                ucfirst($trans->status)
             ]);
         }
 
@@ -5573,16 +5770,42 @@ class AdminFinanceController extends Controller
         ]);
     }
 
+    /**
+     * Download PDF report
+     */
+    protected function downloadPDFReport($transactions, $request)
+    {
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.finances.pdf-report', [
+            'transactions' => $transactions,
+            'filters' => [
+                'vendor_id' => $request->get('vendor_id'),
+                'status' => $request->get('status'),
+                'date_from' => $request->get('date_from'),
+                'date_to' => $request->get('date_to'),
+                'search' => $request->get('search'),
+            ],
+            'generated_at' => now(),
+            'total_profit' => $transactions->sum('admin_profit'),
+            'total_orders_value' => $transactions->sum('order_subtotal'),
+        ]);
+
+        $filename = 'admin_report_' . now()->format('Y-m-d_H-i-s') . '.pdf';
+        
+        return $pdf->download($filename);
+    }
+
     public function vendorSettlement(Request $request)
     {
         $vendors = Vendor::with('user', 'orders')->withCount('orders')->paginate(15);
         $settlementData = [];
 
         foreach ($vendors as $vendor) {
-            $commissions = AdminCommission::where('vendor_id', $vendor->id)->get();
+            $commissions = AdminCommission::where('vendor_id', $vendor->id)
+                ->where('status', 'settled')
+                ->get();
             $totalOrders = $commissions->sum('order_subtotal');
             $commission = $commissions->sum('platform_commission');
-            $payout = $vendor->orders->count() > 0 ? $totalOrders - $commission : 0;
+            $payout = $totalOrders - $commission;
 
             $pendingOrders = $vendor->orders()
                 ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready_for_pickup'])
@@ -5598,8 +5821,63 @@ class AdminFinanceController extends Controller
 
         return view('admin.finances.vendor-settlement', compact('vendors', 'settlementData'));
     }
-}
 
+    /**
+     * Sync all past orders to create AdminCommission records
+     */
+    public function syncOrders()
+    {
+        $orders = Order::whereDoesntHave('adminCommission')->get();
+        $synced = 0;
+        $errors = [];
+        
+        foreach ($orders as $order) {
+            try {
+                $commissionPercentage = \App\Models\Setting::get('platform_fee_percentage', 5);
+                
+                $platformCommission = $order->subtotal * ($commissionPercentage / 100);
+                $riderFee = $order->rider_id ? $order->delivery_fee : 0;
+                $adminProfit = $platformCommission + $order->delivery_fee + $riderFee;
+                $vendorAmount = $order->subtotal - $platformCommission;
+                
+                $status = 'pending';
+                if ($order->status === 'delivered') {
+                    $status = 'settled';
+                } elseif ($order->status === 'cancelled') {
+                    $status = 'cancelled';
+                }
+
+                AdminCommission::create([
+                    'vendor_id' => $order->vendor_id,
+                    'order_id' => $order->id,
+                    'order_subtotal' => $order->subtotal,
+                    'vendor_amount' => $vendorAmount,
+                    'platform_commission' => $platformCommission,
+                    'commission_percentage' => $commissionPercentage,
+                    'delivery_fee' => $order->delivery_fee,
+                    'rider_fee' => $riderFee,
+                    'admin_profit' => $adminProfit,
+                    'status' => $status,
+                    'created_at' => $order->created_at, // ADD THIS - preserve original date
+                    'updated_at' => $order->updated_at, // ADD THIS - preserve original date
+                ]);
+                
+                $synced++;
+                
+            } catch (\Exception $e) {
+                $errors[] = "Order #{$order->id}: " . $e->getMessage();
+            }
+        }
+        
+        $message = "Synced {$synced} orders to finance records.";
+        if (!empty($errors)) {
+            $message .= " Errors: " . implode(', ', $errors);
+        }
+        
+        return redirect()->route('admin.finances.dashboard')
+            ->with('success', $message);
+    }
+}
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Admin/AdminOrderAssignmentController.php
@@ -7490,7 +7768,7 @@ class ProfileController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Customer/CartController.php
-📏 Size: 5186 bytes
+📏 Size: 5115 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -7560,13 +7838,9 @@ class CartController extends Controller
             return redirect()->back()->with('error', 'Insufficient stock available.');
         }
 
-        $price = $product->getPriceForSize($validated['size'] ?? null);
+        // Get customer price from admin pricing
+        $price = $product->getCustomerPriceForSizeAndVendor($validated['size'] ?? null, $validated['vendor_id']);
         
-        // Use custom vendor price if set
-        if ($vendorProduct->pivot->custom_price) {
-            $price = $vendorProduct->pivot->custom_price;
-        }
-
         // Check if product already in cart
         $existingCartItem = Cart::where('user_id', auth()->id())
             ->where('product_id', $validated['product_id'])
@@ -7654,7 +7928,7 @@ class CartController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Customer/OrderController.php
-📏 Size: 24575 bytes
+📏 Size: 23984 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -7672,6 +7946,7 @@ use App\Services\MpesaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -7740,10 +8015,10 @@ class OrderController extends Controller
     public function store(Request $request)
     {   
         // Log incoming request
-        \Log::info('=== ORDER STORE STARTED ===');
-        \Log::info('Request Data:', $request->all());
-        \Log::info('User ID:', ['id' => Auth::id()]);
-        \Log::info('Authenticated:', ['check' => Auth::check()]);
+        \Illuminate\Support\Facades\Log::info('=== ORDER STORE STARTED ===');
+        \Illuminate\Support\Facades\Log::info('Request Data:', $request->all());
+        \Illuminate\Support\Facades\Log::info('User ID:', ['id' => Auth::id()]);
+        \Illuminate\Support\Facades\Log::info('Authenticated:', ['check' => Auth::check()]);
         
         // Validate with conditional M-Pesa number validation
         $validated = $request->validate([
@@ -7762,28 +8037,28 @@ class OrderController extends Controller
             'mpesa_number.regex' => 'M-Pesa number must start with 254 and have exactly 12 digits',
         ]);
         
-        \Log::info('Validation passed:', $validated);
+        \Illuminate\Support\Facades\Log::info('Validation passed:', $validated);
 
         $userId = Auth::id();
         
         // Check if user is authenticated
         if (!$userId) {
-            \Log::error('User not authenticated!');
+            \Illuminate\Support\Facades\Log::error('User not authenticated!');
             return back()->with('error', 'You must be logged in to place an order');
         }
 
         // Query cart
         $cartItems = Cart::where('user_id', $userId)
-                        ->with(['product', 'vendor'])
-                        ->get();
+                            ->with(['product', 'vendor'])
+                            ->get();
 
-        \Log::info('Cart query executed', [
+        \Illuminate\Support\Facades\Log::info('Cart query executed', [
             'user_id' => $userId,
             'cart_count' => $cartItems->count(),
         ]);
 
         if ($cartItems->isEmpty()) {
-            \Log::warning('CART EMPTY ERROR', [
+            \Illuminate\Support\Facades\Log::warning('CART EMPTY ERROR', [
                 'user_id' => $userId,
             ]);
             return back()->with('error', 'Your cart is empty');
@@ -7791,19 +8066,19 @@ class OrderController extends Controller
 
         DB::beginTransaction();
         try {
-            \Log::info('Starting order creation process');
+            \Illuminate\Support\Facades\Log::info('Starting order creation process');
             
             // Group cart items by vendor
             $itemsByVendor = $cartItems->groupBy('vendor_id');
-            \Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
+            \Illuminate\Support\Facades\Log::info('Items grouped by vendor', ['grouped_count' => $itemsByVendor->count()]);
             
             $orders = []; // Store created orders for response
             
             foreach ($itemsByVendor as $vendorId => $items) {
-                \Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
+                \Illuminate\Support\Facades\Log::info('Processing vendor', ['vendor_id' => $vendorId, 'items_count' => $items->count()]);
                 
                 $vendor = Vendor::findOrFail($vendorId);
-                \Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
+                \Illuminate\Support\Facades\Log::info('Vendor found', ['vendor_id' => $vendor->id, 'business_name' => $vendor->business_name]);
                 
                 // Check if vendor is open
                 if (!$vendor->is_open) {
@@ -7816,15 +8091,15 @@ class OrderController extends Controller
                     return $item->price * $item->quantity;
                 });
                 
-                \Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
+                \Illuminate\Support\Facades\Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
                 $deliveryFee = $this->calculateDeliveryFee($vendor, $request->delivery_latitude, $request->delivery_longitude);
                 $platformFee = $subtotal * 0.05; // 5% platform fee
                 $total = $subtotal + $deliveryFee + $platformFee;
 
-                \Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
+                \Illuminate\Support\Facades\Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
 
-                // Create order
-                \Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
+                // Create order (NO RIDER ASSIGNMENT YET)
+                \Illuminate\Support\Facades\Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
                 $order = Order::create([
                     'customer_id' => Auth::id(),
                     'vendor_id' => $vendorId,
@@ -7832,8 +8107,8 @@ class OrderController extends Controller
                     'sub_county' => $request->sub_county,
                     'ward' => $request->ward,
                     'delivery_address' => $request->delivery_address,
-                    'delivery_latitude' => (string) $request->delivery_latitude,  // Cast to string
-                    'delivery_longitude' => (string) $request->delivery_longitude, // Cast to string
+                    'delivery_latitude' => (string) $request->delivery_latitude,
+                    'delivery_longitude' => (string) $request->delivery_longitude,
                     'subtotal' => $subtotal,
                     'delivery_fee' => $deliveryFee,
                     'platform_fee' => $platformFee,
@@ -7843,84 +8118,59 @@ class OrderController extends Controller
                     'mpesa_number' => $request->payment_method === 'mpesa' ? $request->mpesa_number : null,
                     'special_instructions' => $request->special_instructions,
                     'status' => 'pending',
+                    // 'rider_id' => null, // Explicitly set rider_id to null
                 ]);
                 
-                \Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
+                \Illuminate\Support\Facades\Log::info('Order created successfully', ['order_id' => $order->id, 'order_number' => $order->order_number]);
 
-                // Create order items
+                // Create order items with admin pricing
                 foreach ($items as $cartItem) {
-                    \Log::info('Creating order item', ['cart_item_id' => $cartItem->id, 'product_id' => $cartItem->product_id]);
+                    // Re-verify the customer price at time of order using admin pricing
+                    $product = Product::find($cartItem->product_id);
+                    $finalPrice = $product->getCustomerPriceForSizeAndVendor(
+                        $cartItem->size ?? null, 
+                        $vendorId
+                    );
+                    
+                    \Illuminate\Support\Facades\Log::info('Creating order item', [
+                        'cart_item_id' => $cartItem->id, 
+                        'product_id' => $cartItem->product_id,
+                        'price_used' => $finalPrice,
+                        'original_price' => $cartItem->price
+                    ]);
+                    
                     $order->items()->create([
                         'product_id' => $cartItem->product_id,
                         'quantity' => $cartItem->quantity,
-                        'unit_price' => $cartItem->price,
+                        'unit_price' => $finalPrice,
                         'size' => $cartItem->size,
-                        'total' => $cartItem->price * $cartItem->quantity,
+                        'total' => $finalPrice * $cartItem->quantity,
                     ]);
                 }
                 
-                \Log::info('Order items created successfully', ['order_id' => $order->id]);
+                \Illuminate\Support\Facades\Log::info('Order items created successfully', ['order_id' => $order->id]);
 
                 // Create initial tracking record with customer's delivery location
                 $order->tracking()->create([
                     'status' => 'pending',
-                    'notes' => 'Order placed successfully',
+                    'notes' => 'Order placed successfully. Waiting for vendor confirmation.',
                     'latitude' => $request->delivery_latitude,
                     'longitude' => $request->delivery_longitude,
                     'updated_by' => Auth::id(),
                     'updated_by_type' => 'customer',
                 ]);
 
-                // Match with nearest available rider based on vendor location
-                $rider = $this->matchingService->findNearestRider($vendor);
-                if ($rider) {
-                    $order->update(['rider_id' => $rider->id]);
-                    
-                    // Create tracking record for rider assignment with rider's location
-                    $trackingData = [
-                        'status' => 'rider_assigned',
-                        'notes' => "Rider {$rider->user->name} has been assigned to your order",
-                        'updated_by' => Auth::id(),
-                        'updated_by_type' => 'system',
-                    ];
-                    
-                    if ($rider->current_latitude && $rider->current_longitude) {
-                        $trackingData['latitude'] = $rider->current_latitude;
-                        $trackingData['longitude'] = $rider->current_longitude;
-                    }
-                    
-                    $order->tracking()->create($trackingData);
-                    
-                    \Log::info('Rider assigned', [
-                        'order_id' => $order->id, 
-                        'rider_id' => $rider->id,
-                        'rider_name' => $rider->user->name,
-                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude,
-                        'rider_location' => $rider->current_latitude . ',' . $rider->current_longitude
-                    ]);
-                } else {
-                    \Log::warning('No rider available for assignment', [
-                        'order_id' => $order->id,
-                        'vendor_id' => $vendor->id,
-                        'vendor_location' => $vendor->latitude . ',' . $vendor->longitude
-                    ]);
-                    
-                    // Create tracking record for no rider available
-                    $order->tracking()->create([
-                        'status' => 'pending',
-                        'notes' => 'Looking for an available rider...',
-                        'latitude' => $vendor->latitude,
-                        'longitude' => $vendor->longitude,
-                        'updated_by' => Auth::id(),
-                        'updated_by_type' => 'system',
-                    ]);
-                }
+                // ============================================================
+                // IMPORTANT: RIDER ASSIGNMENT REMOVED FROM THIS LOCATION
+                // Riders will only be assigned when the order status becomes 'ready_for_pickup'
+                // and a rider manually accepts the order from their dashboard.
+                // ============================================================
 
-                // Dispatch OrderPlaced event
+                // Dispatch OrderPlaced event to notify vendor
                 $order->load(['vendor.user', 'customer', 'items.product']);
                 event(new OrderPlaced($order));
 
-                \Log::info('OrderPlaced event dispatched', [
+                \Illuminate\Support\Facades\Log::info('OrderPlaced event dispatched', [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
                     'vendor_id' => $vendor->id
@@ -7935,18 +8185,18 @@ class OrderController extends Controller
             }
 
             // Clear cart
-            \Log::info('Clearing cart for user', ['user_id' => Auth::id()]);
+            \Illuminate\Support\Facades\Log::info('Clearing cart for user', ['user_id' => Auth::id()]);
             Cart::where('user_id', Auth::id())->delete();
 
             DB::commit();
             
-            \Log::info('Order placement successful, committing transaction');
+            \Illuminate\Support\Facades\Log::info('Order placement successful, committing transaction');
             return redirect()->route('customer.orders')
-                           ->with('success', 'Order placed successfully!');
-                           
+                        ->with('success', 'Order placed successfully!');
+                        
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Exception in order placement', [
+            \Illuminate\Support\Facades\Log::error('Exception in order placement', [
                 'error_message' => $e->getMessage(),
                 'error_code' => $e->getCode(),
                 'error_file' => $e->getFile(),
@@ -8287,7 +8537,7 @@ class OrderController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Customer/ProductController.php
-📏 Size: 2919 bytes
+📏 Size: 4636 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -8307,7 +8557,7 @@ class ProductController extends Controller
         $categories = Category::where('is_active', true)->get();
         $category = request('category');
         $search = request('search');
-        $nearby = request('nearby'); // 0 for all, 1 for nearby only
+        $nearby = request('nearby');
         $userLat = request('lat');
         $userLng = request('lng');
         
@@ -8321,23 +8571,33 @@ class ProductController extends Controller
             $query->where('category_id', $category);
         }
         
-        // Search by product name or description
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                ->orWhere('description', 'like', "%{$search}%");
             });
         }
         
-        // Filter by nearby vendors (within ~1km radius)
         if ($nearby && $userLat && $userLng) {
             $query->whereHas('vendors', function($q) use ($userLat, $userLng) {
                 $q->where('is_open', true)
-                  ->whereRaw("(6371 * acos(cos(radians($userLat)) * cos(radians(latitude)) * cos(radians(longitude) - radians($userLng)) + sin(radians($userLat)) * sin(radians(latitude)))) <= 1");
+                ->whereRaw("(6371 * acos(cos(radians($userLat)) * cos(radians(latitude)) * cos(radians(longitude) - radians($userLng)) + sin(radians($userLat)) * sin(radians(latitude)))) <= 1");
             });
         }
         
         $products = $query->paginate(12);
+        
+        // Get the first vendor for each product and calculate customer price
+        foreach ($products as $product) {
+            $vendor = $product->vendors()->first();
+            if ($vendor) {
+                $product->customer_price = $product->getCustomerPriceForVendor($vendor->id);
+                $product->vendor_id_for_price = $vendor->id;
+            } else {
+                $product->customer_price = $product->final_price;
+                $product->vendor_id_for_price = null;
+            }
+        }
         
         return view('customer.products.index', [
             'products' => $products,
@@ -8358,8 +8618,38 @@ class ProductController extends Controller
                 ->with('error', 'This product is currently unavailable.');
         }
         
+        // Get customer price from admin pricing
+        $customerPrice = $product->getCustomerPriceForVendor($vendor->id);
+        
+        // Also get size-based prices with admin markup if applicable
+        $sizePricesWithMarkup = [];
+        
+        // Decode the JSON string to array
+        $sizePrices = json_decode($product->size_prices, true);
+        $sizesArray = json_decode($product->sizes, true);
+        
+        if ($sizePrices && is_array($sizePrices)) {
+            foreach ($sizePrices as $size => $price) {
+                $adminPrice = \App\Models\AdminPrice::where('product_id', $product->id)
+                    ->where('vendor_id', $vendor->id)
+                    ->where('is_active', true)
+                    ->first();
+                
+                if ($adminPrice && $adminPrice->customer_visible_price) {
+                    // If admin has set a fixed customer price, use that for all sizes
+                    $sizePricesWithMarkup[$size] = $adminPrice->customer_visible_price;
+                } else {
+                    $sizePricesWithMarkup[$size] = $price;
+                }
+            }
+        }
+        
         return view('customer.products.show', [
             'product' => $product,
+            'vendor' => $vendor,
+            'customerPrice' => $customerPrice,
+            'sizePricesWithMarkup' => $sizePricesWithMarkup,
+            'sizesArray' => $sizesArray,
         ]);
     }
 
@@ -10053,7 +10343,7 @@ class Notification extends Model
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Models/Order.php
-📏 Size: 2755 bytes
+📏 Size: 2860 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -10173,6 +10463,11 @@ class Order extends Model
         // Send notification
         event(new OrderStatusUpdated($this));
     }
+
+    public function adminCommission()
+    {
+        return $this->hasOne(AdminCommission::class);
+    }
 }
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -10258,7 +10553,7 @@ class OrderTracking extends Model
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Models/Product.php
-📏 Size: 2547 bytes
+📏 Size: 4293 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -10358,6 +10653,64 @@ class Product extends Model
             return $this->size_prices[$size];
         }
         return $this->final_price;
+    }
+
+    /**
+     * Get the customer-visible price for a specific vendor
+     */
+    public function getCustomerPriceForVendor($vendorId)
+    {
+        // Check if there's an admin price record for this product and vendor
+        $adminPrice = \App\Models\AdminPrice::where('product_id', $this->id)
+            ->where('vendor_id', $vendorId)
+            ->where('is_active', true)
+            ->first();
+        
+        if ($adminPrice && $adminPrice->customer_visible_price) {
+            return $adminPrice->customer_visible_price;
+        }
+        
+        // Fallback to product's final price
+        return $this->final_price;
+    }
+
+    /**
+     * Get the customer-visible price with vendor context for size-based pricing
+     */
+    public function getCustomerPriceForSizeAndVendor($size, $vendorId)
+    {
+        // First check if there's an admin price override
+        $adminPrice = \App\Models\AdminPrice::where('product_id', $this->id)
+            ->where('vendor_id', $vendorId)
+            ->where('is_active', true)
+            ->first();
+        
+        if ($adminPrice && $adminPrice->customer_visible_price) {
+            return $adminPrice->customer_visible_price;
+        }
+        
+        // Fallback to size-based pricing
+        if ($this->size_prices && isset($this->size_prices[$size])) {
+            return $this->size_prices[$size];
+        }
+        
+        return $this->final_price;
+    }
+
+    /**
+     * Get sizes as array
+     */
+    public function getSizesArrayAttribute()
+    {
+        return json_decode($this->sizes, true) ?? [];
+    }
+
+    /**
+     * Get size prices as array
+     */
+    public function getSizePricesArrayAttribute()
+    {
+        return json_decode($this->size_prices, true) ?? [];
     }
 }
 
@@ -11190,48 +11543,187 @@ class Vendor extends Model
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/admin/finances/dashboard.blade.php
-📏 Size: 3213 bytes
+📏 Size: 7880 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
 @section('content')
 <div class="container-fluid py-4">
-    <h1 class="mb-4"><i class="bi bi-graph-up"></i> Finance Dashboard</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0"><i class="bi bi-graph-up"></i> Finance Dashboard</h1>
+        <a href="{{ route('admin.finances.sync') }}" class="btn btn-warning" onclick="return confirm('Sync all past orders?')">
+            <i class="bi bi-arrow-repeat"></i> Sync Orders
+        </a>
+    </div>
 
+    <!-- Status Summary Cards -->
     <div class="row mb-4">
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Orders Value</h5><h3 style="color:#05bb14;">KES {{ number_format($totalOrders, 2) }}</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Profit</h5><h3 style="color:#05bb14;">KES {{ number_format($totalProfit, 2) }}</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Profit Margin</h5><h3 style="color:#237bdd;">{{ round($profitMargin, 2) }}%</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Orders</h5><h3>{{ $orderCount }}</h3></div></div></div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Settled Transactions</h6>
+                    <h3 class="fw-bold text-success">{{ $settledCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Pending Transactions</h6>
+                    <h3 class="fw-bold text-warning">{{ $pendingCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Cancelled Transactions</h6>
+                    <h3 class="fw-bold text-danger">{{ $cancelledCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="row mb-4">
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Platform Commission</h6><h4>KES {{ number_format($platformCommission, 2) }}</h4></div></div></div>
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Delivery Fees</h6><h4>KES {{ number_format($deliveryFees, 2) }}</h4></div></div></div>
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Rider Fees Paid</h6><h4>KES {{ number_format($riderFees, 2) }}</h4></div></div></div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Orders Value</h5>
+                    <h3 style="color:#05bb14;">KES {{ number_format($totalOrders, 2) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Profit</h5>
+                    <h3 style="color:#05bb14;">KES {{ number_format($totalProfit, 2) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Profit Margin</h5>
+                    <h3 style="color:#237bdd;">{{ round($profitMargin, 2) }}%</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Orders</h5>
+                    <h3>{{ $orderCount }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Platform Commission</h6>
+                    <h4>KES {{ number_format($platformCommission, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Delivery Fees Collected</h6>
+                    <h4>KES {{ number_format($deliveryFees, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Rider Fees Paid</h6>
+                    <h4>KES {{ number_format($riderFees, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Form -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <a href="{{ route('admin.finances.dashboard') }}" class="btn btn-secondary w-100">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
     <div class="card">
-        <div class="card-header"><h5>Recent Transactions</h5></div>
+        <div class="card-header">
+            <h5 class="mb-0">Recent Transactions</h5>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Order ID</th><th>Vendor</th><th>Order Total</th><th>Commission</th><th>Delivery Fee</th><th>Rider Fee</th><th>Profit</th><th>Status</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Order #</th>
+                        <th>Vendor</th>
+                        <th>Order Total</th>
+                        <th>Commission</th>
+                        <th>Delivery Fee</th>
+                        <th>Rider Fee</th>
+                        <th>Profit</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($transactions as $trans)
                         <tr>
+                            <td>{{ $trans->created_at->setTimezone('Africa/Nairobi')->format('Y-m-d H:i') }}</td>
                             <td>#{{ $trans->order->id ?? 'N/A' }}</td>
+                            <td><strong>{{ $trans->order->order_number ?? 'N/A' }}</strong></td>
                             <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
                             <td>KES {{ number_format($trans->order_subtotal, 2) }}</td>
                             <td>KES {{ number_format($trans->platform_commission, 2) }}</td>
                             <td>KES {{ number_format($trans->delivery_fee, 2) }}</td>
                             <td>KES {{ number_format($trans->rider_fee, 2) }}</td>
-                            <td><strong style="color:#05bb14;">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
-                            <td><span class="badge bg-info">{{ ucfirst($trans->status) }}</span></td>
+                            <td><strong class="text-success">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
+                            <td>
+                                @if($trans->status === 'settled')
+                                    <span class="badge bg-success">Settled</span>
+                                @elseif($trans->status === 'pending')
+                                    <span class="badge bg-warning">Pending</span>
+                                @else
+                                    <span class="badge bg-danger">Cancelled</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center py-4">No transactions</td></tr>
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="mt-2 text-muted">No transactions found. Click "Sync Orders" to import past orders.</p>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -11284,60 +11776,300 @@ class Vendor extends Model
 @endsection
 
 ────────────────────────────────────────────────────────────────────────────────
+📄 File: resources/views/admin/finances/pdf-report.blade.php
+📏 Size: 4481 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Finance Report - Ali Safi</title>
+    <style>
+        body {
+            font-family: 'DejaVu Sans', sans-serif;
+            font-size: 12px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #05bb14;
+            padding-bottom: 10px;
+        }
+        .header h1 {
+            color: #05bb14;
+            margin: 0;
+        }
+        .filters {
+            background: #f8f9fa;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #05bb14;
+            color: white;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 10px;
+            color: #666;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-success {
+            color: #05bb14;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Ali Safi Finance Report</h1>
+        <p>Generated on: {{ $generated_at->format('F d, Y H:i:s') }}</p>
+    </div>
+
+    @if(!empty($filters))
+    <div class="filters">
+        <strong>Filters Applied:</strong>
+        <ul>
+            @if($filters['vendor_id'])
+                <li>Vendor ID: {{ $filters['vendor_id'] }}</li>
+            @endif
+            @if($filters['status'])
+                <li>Status: {{ ucfirst($filters['status']) }}</li>
+            @endif
+            @if($filters['date_from'])
+                <li>From: {{ $filters['date_from'] }}</li>
+            @endif
+            @if($filters['date_to'])
+                <li>To: {{ $filters['date_to'] }}</li>
+            @endif
+            @if($filters['search'])
+                <li>Search: {{ $filters['search'] }}</li>
+            @endif
+        </ul>
+    </div>
+    @endif
+
+    <div class="summary">
+        <table style="width: 100%; border: none;">
+            <tr>
+                <td style="border: none;"><strong>Total Orders Value:</strong></td>
+                <td style="border: none;" class="text-right">KES {{ number_format($total_orders_value, 2) }}</td>
+                <td style="border: none; width: 50px;"></td>
+                <td style="border: none;"><strong>Total Profit:</strong></td>
+                <td style="border: none;" class="text-right text-success">KES {{ number_format($total_profit, 2) }}</td>
+            </tr>
+            <tr>
+                <td style="border: none;"><strong>Total Transactions:</strong></td>
+                <td style="border: none;" class="text-right">{{ $transactions->count() }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Order #</th>
+                <th>Vendor</th>
+                <th>Order Total</th>
+                <th>Commission</th>
+                <th>Delivery Fee</th>
+                <th>Rider Fee</th>
+                <th>Profit</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($transactions as $trans)
+            <tr>
+                <td>{{ $trans->created_at->format('Y-m-d H:i') }}</td>
+                <td>{{ $trans->order->order_number ?? 'N/A' }}</td>
+                <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
+                <td class="text-right">KES {{ number_format($trans->order_subtotal, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->platform_commission, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->delivery_fee, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->rider_fee, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->admin_profit, 2) }}</td>
+                <td>{{ ucfirst($trans->status) }}</td>
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>This is a system-generated report. For any queries, please contact support.</p>
+    </div>
+</body>
+</html>
+
+────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/admin/finances/reports.blade.php
-📏 Size: 3116 bytes
+📏 Size: 7271 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
 @section('content')
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between mb-4">
-        <h1><i class="bi bi-file-earmark-pdf"></i> Finance Reports</h1>
-        <a href="{{ route('admin.finances.download-report', request()->query()) }}" class="btn btn-success"><i class="bi bi-download"></i> Download CSV</a>
+        <h1><i class="bi bi-file-earmark-text"></i> Finance Reports</h1>
+        <div>
+            <a href="{{ route('admin.finances.download-report', array_merge(request()->query(), ['format' => 'csv'])) }}" class="btn btn-success me-2">
+                <i class="bi bi-download"></i> Download CSV
+            </a>
+            <a href="{{ route('admin.finances.download-report', array_merge(request()->query(), ['format' => 'pdf'])) }}" class="btn btn-danger">
+                <i class="bi bi-file-pdf"></i> Download PDF
+            </a>
+        </div>
     </div>
 
+    <!-- Search and Filters -->
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-3">
-                    <select name="vendor_id" class="form-select">
-                        <option value="">All Vendors</option>
-                        @foreach($vendors as $id => $name)<option value="{{ $id }}" {{ request('vendor_id') == $id ? 'selected' : '' }}>{{ $name }}</option>@endforeach
-                    </select>
+                    <label class="form-label">Search</label>
+                    <input type="text" name="search" class="form-control" placeholder="Order # or Vendor..." value="{{ request('search') }}">
                 </div>
                 <div class="col-md-3">
+                    <label class="form-label">Vendor</label>
+                    <select name="vendor_id" class="form-select">
+                        <option value="">All Vendors</option>
+                        @foreach($vendors as $id => $name)
+                            <option value="{{ $id }}" {{ request('vendor_id') == $id ? 'selected' : '' }}>{{ $name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
                     <select name="status" class="form-select">
                         <option value="">All Status</option>
                         <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending</option>
                         <option value="settled" {{ request('status') === 'settled' ? 'selected' : '' }}>Settled</option>
+                        <option value="cancelled" {{ request('status') === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
                     </select>
                 </div>
-                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button></div>
+                <div class="col-md-2">
+                    <label class="form-label">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                </div>
+                <div class="col-md-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                    <a href="{{ route('admin.finances.reports') }}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                </div>
             </form>
         </div>
     </div>
 
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Orders Value</h6>
+                    <h4>KES {{ number_format($transactions->sum('order_subtotal'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Commission</h6>
+                    <h4>KES {{ number_format($transactions->sum('platform_commission'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Profit</h6>
+                    <h4 class="text-success">KES {{ number_format($transactions->sum('admin_profit'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Transactions</h6>
+                    <h4>{{ $transactions->total() }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Date</th><th>Order ID</th><th>Vendor</th><th>Order Total</th><th>Commission</th><th>Delivery</th><th>Rider</th><th>Profit</th><th>Status</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Order #</th>
+                        <th>Vendor</th>
+                        <th>Order Total</th>
+                        <th>Commission</th>
+                        <th>Delivery</th>
+                        <th>Rider Fee</th>
+                        <th>Profit</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($transactions as $trans)
                         <tr>
-                            <td>{{ $trans->created_at->format('M d, Y') }}</td>
+                            <td>{{ $trans->created_at->format('M d, Y H:i') }}</td>
                             <td>#{{ $trans->order->id ?? 'N/A' }}</td>
+                            <td><strong>{{ $trans->order->order_number ?? 'N/A' }}</strong></td>
                             <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
                             <td>KES {{ number_format($trans->order_subtotal, 2) }}</td>
                             <td>KES {{ number_format($trans->platform_commission, 2) }}</td>
                             <td>KES {{ number_format($trans->delivery_fee, 2) }}</td>
                             <td>KES {{ number_format($trans->rider_fee, 2) }}</td>
-                            <td><strong>KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
-                            <td><span class="badge bg-info">{{ ucfirst($trans->status) }}</span></td>
+                            <td><strong class="text-success">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
+                            <td>
+                                @if($trans->status === 'settled')
+                                    <span class="badge bg-success">Settled</span>
+                                @elseif($trans->status === 'pending')
+                                    <span class="badge bg-warning">Pending</span>
+                                @else
+                                    <span class="badge bg-danger">Cancelled</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center py-4">No records</td></tr>
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="mt-2 text-muted">No records found</p>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -18011,7 +18743,7 @@ window.addEventListener('beforeunload', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/customer/products/index.blade.php
-📏 Size: 8135 bytes
+📏 Size: 8376 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
@@ -18077,51 +18809,51 @@ window.addEventListener('beforeunload', function() {
     @if($products->count())
         <div class="row g-4">
             @foreach($products as $product)
-            <div class="col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                        @if($product->image)
-                            <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
-                        @else
-                            <div class="text-center">
-                                <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
-                                <p class="text-muted small mt-2 mb-0">No image</p>
-                            </div>
-                        @endif
-                    </div>
-                    <div class="card-body">
-                        <h5 class="card-title">{{ $product->name }}</h5>
-                        <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
-                        
-                        <div class="mb-3">
-                            <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
-                            @php
-                                $vendor = $product->vendors()->first();
-                            @endphp
-                            @if($vendor && $vendor->is_open)
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle"></i> Open
-                                </span>
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            @if($product->image)
+                                <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
                             @else
-                                <span class="badge bg-secondary">
-                                    <i class="bi bi-lock"></i> Closed
-                                </span>
+                                <div class="text-center">
+                                    <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
+                                    <p class="text-muted small mt-2 mb-0">No image</p>
+                                </div>
                             @endif
                         </div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ $product->name }}</h5>
+                            <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
+                            
+                            <div class="mb-3">
+                                <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
+                                @php
+                                    $vendor = $product->vendors()->first();
+                                @endphp
+                                @if($vendor && $vendor->is_open)
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i> Open
+                                    </span>
+                                @else
+                                    <span class="badge bg-secondary">
+                                        <i class="bi bi-lock"></i> Closed
+                                    </span>
+                                @endif
+                            </div>
 
-                        <h6 class="fw-bold mb-3">
-                            KES {{ number_format($product->final_price, 0) }}
-                        </h6>
+                            <h6 class="fw-bold mb-3" style="color: var(--primary-green);">
+                                KES {{ number_format($product->customer_price ?? $product->final_price, 0) }}
+                            </h6>
 
-                        <div class="d-grid gap-2">
-                            <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
-                                <i class="bi bi-eye"></i> View Details
-                            </a>
+                            <div class="d-grid gap-2">
+                                <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-eye"></i> View Details
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        @endforeach
+                @endforeach
         </div>
 
         <!-- Pagination -->
@@ -18204,7 +18936,7 @@ window.addEventListener('beforeunload', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/customer/products/show.blade.php
-📏 Size: 19550 bytes
+📏 Size: 20965 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
@@ -18277,8 +19009,14 @@ window.addEventListener('beforeunload', function() {
                     <!-- Pricing -->
                     <div class="mb-4 pb-3 border-bottom">
                         <div class="d-flex align-items-baseline gap-3">
-                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">KES {{ number_format($product->final_price, 0) }}</h2>
-                            <span class="text-decoration-line-through text-muted">KES {{ number_format($product->base_price, 0) }}</span>
+                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">
+                                KES {{ number_format($customerPrice ?? $product->final_price, 0) }}
+                            </h2>
+                            @if(($customerPrice ?? $product->final_price) < $product->base_price)
+                                <span class="text-decoration-line-through text-muted">
+                                    KES {{ number_format($product->base_price, 0) }}
+                                </span>
+                            @endif
                         </div>
                         <p class="small text-muted mb-0">{{ $product->description }}</p>
                     </div>
@@ -18294,20 +19032,32 @@ window.addEventListener('beforeunload', function() {
                         
                         <div class="mb-4">
                             <!-- Size Selection -->
-                            @php
-                                $sizes = json_decode($product->sizes, true) ?? [];
-                            @endphp
-                            @if($sizes)
-                                <div class="mb-4">
-                                    <label class="form-label fw-bold mb-2">Size</label>
-                                    <div class="d-flex gap-2">
-                                        @foreach($sizes as $index => $size)
-                                            <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
-                                            <label class="btn btn-outline-secondary" for="size_{{ $index }}">{{ $size }}</label>
-                                        @endforeach
+                                @php
+                                    $sizes = json_decode($product->sizes, true) ?? [];
+                                    $sizePrices = json_decode($product->size_prices, true) ?? [];
+                                @endphp
+
+                                @if(!empty($sizes))
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold mb-2">Size</label>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @foreach($sizes as $index => $size)
+                                                <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" 
+                                                    value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
+                                                <label class="btn btn-outline-secondary" for="size_{{ $index }}">
+                                                    {{ $size }}
+                                                    @php
+                                                        // Use admin price if available, otherwise use original size price
+                                                        $sizePrice = isset($sizePricesWithMarkup[$size]) 
+                                                            ? $sizePricesWithMarkup[$size] 
+                                                            : ($sizePrices[$size] ?? $customerPrice ?? $product->final_price);
+                                                    @endphp
+                                                    <br><small class="text-success">KES {{ number_format($sizePrice, 0) }}</small>
+                                                </label>
+                                            @endforeach
+                                        </div>
                                     </div>
-                                </div>
-                            @endif
+                                @endif
 
                             <!-- Quantity -->
                             <div class="mb-4">
@@ -18323,7 +19073,7 @@ window.addEventListener('beforeunload', function() {
                             <!-- Total Price -->
                             <div class="mb-4 p-3 rounded" style="background-color: #f8f9fa;">
                                 <p class="text-muted mb-2">Total Price:</p>
-                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($product->final_price, 0) }}</span></h5>
+                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($customerPrice ?? $product->final_price, 0) }}</span></h5>
                             </div>
                         </div>
 
@@ -18502,10 +19252,10 @@ window.addEventListener('beforeunload', function() {
 <script>
     // Get price data from product
     @php
-        $sizePrices = json_decode($product->size_prices, true) ?? [];
+        $sizePricesForJs = !empty($sizePricesWithMarkup) ? $sizePricesWithMarkup : (json_decode($product->size_prices, true) ?? []);
     @endphp
-    const sizePrices = {!! json_encode($sizePrices) !!};
-    const basePrice = {{ $product->final_price }};
+    const sizePrices = {!! json_encode($sizePricesForJs) !!};
+    const basePrice = {{ $customerPrice ?? $product->final_price }};
 
     function updateTotalPrice() {
         const quantity = parseInt(document.getElementById('quantity').value) || 1;
@@ -22445,48 +23195,187 @@ function requestWithdrawal() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/admin/finances/dashboard.blade.php
-📏 Size: 3213 bytes
+📏 Size: 7880 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
 @section('content')
 <div class="container-fluid py-4">
-    <h1 class="mb-4"><i class="bi bi-graph-up"></i> Finance Dashboard</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0"><i class="bi bi-graph-up"></i> Finance Dashboard</h1>
+        <a href="{{ route('admin.finances.sync') }}" class="btn btn-warning" onclick="return confirm('Sync all past orders?')">
+            <i class="bi bi-arrow-repeat"></i> Sync Orders
+        </a>
+    </div>
 
+    <!-- Status Summary Cards -->
     <div class="row mb-4">
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Orders Value</h5><h3 style="color:#05bb14;">KES {{ number_format($totalOrders, 2) }}</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Profit</h5><h3 style="color:#05bb14;">KES {{ number_format($totalProfit, 2) }}</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Profit Margin</h5><h3 style="color:#237bdd;">{{ round($profitMargin, 2) }}%</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Orders</h5><h3>{{ $orderCount }}</h3></div></div></div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Settled Transactions</h6>
+                    <h3 class="fw-bold text-success">{{ $settledCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Pending Transactions</h6>
+                    <h3 class="fw-bold text-warning">{{ $pendingCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Cancelled Transactions</h6>
+                    <h3 class="fw-bold text-danger">{{ $cancelledCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="row mb-4">
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Platform Commission</h6><h4>KES {{ number_format($platformCommission, 2) }}</h4></div></div></div>
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Delivery Fees</h6><h4>KES {{ number_format($deliveryFees, 2) }}</h4></div></div></div>
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Rider Fees Paid</h6><h4>KES {{ number_format($riderFees, 2) }}</h4></div></div></div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Orders Value</h5>
+                    <h3 style="color:#05bb14;">KES {{ number_format($totalOrders, 2) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Profit</h5>
+                    <h3 style="color:#05bb14;">KES {{ number_format($totalProfit, 2) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Profit Margin</h5>
+                    <h3 style="color:#237bdd;">{{ round($profitMargin, 2) }}%</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Orders</h5>
+                    <h3>{{ $orderCount }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Platform Commission</h6>
+                    <h4>KES {{ number_format($platformCommission, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Delivery Fees Collected</h6>
+                    <h4>KES {{ number_format($deliveryFees, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Rider Fees Paid</h6>
+                    <h4>KES {{ number_format($riderFees, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Form -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <a href="{{ route('admin.finances.dashboard') }}" class="btn btn-secondary w-100">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
     <div class="card">
-        <div class="card-header"><h5>Recent Transactions</h5></div>
+        <div class="card-header">
+            <h5 class="mb-0">Recent Transactions</h5>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Order ID</th><th>Vendor</th><th>Order Total</th><th>Commission</th><th>Delivery Fee</th><th>Rider Fee</th><th>Profit</th><th>Status</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Order #</th>
+                        <th>Vendor</th>
+                        <th>Order Total</th>
+                        <th>Commission</th>
+                        <th>Delivery Fee</th>
+                        <th>Rider Fee</th>
+                        <th>Profit</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($transactions as $trans)
                         <tr>
+                            <td>{{ $trans->created_at->setTimezone('Africa/Nairobi')->format('Y-m-d H:i') }}</td>
                             <td>#{{ $trans->order->id ?? 'N/A' }}</td>
+                            <td><strong>{{ $trans->order->order_number ?? 'N/A' }}</strong></td>
                             <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
                             <td>KES {{ number_format($trans->order_subtotal, 2) }}</td>
                             <td>KES {{ number_format($trans->platform_commission, 2) }}</td>
                             <td>KES {{ number_format($trans->delivery_fee, 2) }}</td>
                             <td>KES {{ number_format($trans->rider_fee, 2) }}</td>
-                            <td><strong style="color:#05bb14;">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
-                            <td><span class="badge bg-info">{{ ucfirst($trans->status) }}</span></td>
+                            <td><strong class="text-success">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
+                            <td>
+                                @if($trans->status === 'settled')
+                                    <span class="badge bg-success">Settled</span>
+                                @elseif($trans->status === 'pending')
+                                    <span class="badge bg-warning">Pending</span>
+                                @else
+                                    <span class="badge bg-danger">Cancelled</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center py-4">No transactions</td></tr>
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="mt-2 text-muted">No transactions found. Click "Sync Orders" to import past orders.</p>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -22539,60 +23428,300 @@ function requestWithdrawal() {
 @endsection
 
 ────────────────────────────────────────────────────────────────────────────────
+📄 File: resources/views/admin/finances/pdf-report.blade.php
+📏 Size: 4481 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Finance Report - Ali Safi</title>
+    <style>
+        body {
+            font-family: 'DejaVu Sans', sans-serif;
+            font-size: 12px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #05bb14;
+            padding-bottom: 10px;
+        }
+        .header h1 {
+            color: #05bb14;
+            margin: 0;
+        }
+        .filters {
+            background: #f8f9fa;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #05bb14;
+            color: white;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 10px;
+            color: #666;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-success {
+            color: #05bb14;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Ali Safi Finance Report</h1>
+        <p>Generated on: {{ $generated_at->format('F d, Y H:i:s') }}</p>
+    </div>
+
+    @if(!empty($filters))
+    <div class="filters">
+        <strong>Filters Applied:</strong>
+        <ul>
+            @if($filters['vendor_id'])
+                <li>Vendor ID: {{ $filters['vendor_id'] }}</li>
+            @endif
+            @if($filters['status'])
+                <li>Status: {{ ucfirst($filters['status']) }}</li>
+            @endif
+            @if($filters['date_from'])
+                <li>From: {{ $filters['date_from'] }}</li>
+            @endif
+            @if($filters['date_to'])
+                <li>To: {{ $filters['date_to'] }}</li>
+            @endif
+            @if($filters['search'])
+                <li>Search: {{ $filters['search'] }}</li>
+            @endif
+        </ul>
+    </div>
+    @endif
+
+    <div class="summary">
+        <table style="width: 100%; border: none;">
+            <tr>
+                <td style="border: none;"><strong>Total Orders Value:</strong></td>
+                <td style="border: none;" class="text-right">KES {{ number_format($total_orders_value, 2) }}</td>
+                <td style="border: none; width: 50px;"></td>
+                <td style="border: none;"><strong>Total Profit:</strong></td>
+                <td style="border: none;" class="text-right text-success">KES {{ number_format($total_profit, 2) }}</td>
+            </tr>
+            <tr>
+                <td style="border: none;"><strong>Total Transactions:</strong></td>
+                <td style="border: none;" class="text-right">{{ $transactions->count() }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Order #</th>
+                <th>Vendor</th>
+                <th>Order Total</th>
+                <th>Commission</th>
+                <th>Delivery Fee</th>
+                <th>Rider Fee</th>
+                <th>Profit</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($transactions as $trans)
+            <tr>
+                <td>{{ $trans->created_at->format('Y-m-d H:i') }}</td>
+                <td>{{ $trans->order->order_number ?? 'N/A' }}</td>
+                <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
+                <td class="text-right">KES {{ number_format($trans->order_subtotal, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->platform_commission, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->delivery_fee, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->rider_fee, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->admin_profit, 2) }}</td>
+                <td>{{ ucfirst($trans->status) }}</td>
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>This is a system-generated report. For any queries, please contact support.</p>
+    </div>
+</body>
+</html>
+
+────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/admin/finances/reports.blade.php
-📏 Size: 3116 bytes
+📏 Size: 7271 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
 @section('content')
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between mb-4">
-        <h1><i class="bi bi-file-earmark-pdf"></i> Finance Reports</h1>
-        <a href="{{ route('admin.finances.download-report', request()->query()) }}" class="btn btn-success"><i class="bi bi-download"></i> Download CSV</a>
+        <h1><i class="bi bi-file-earmark-text"></i> Finance Reports</h1>
+        <div>
+            <a href="{{ route('admin.finances.download-report', array_merge(request()->query(), ['format' => 'csv'])) }}" class="btn btn-success me-2">
+                <i class="bi bi-download"></i> Download CSV
+            </a>
+            <a href="{{ route('admin.finances.download-report', array_merge(request()->query(), ['format' => 'pdf'])) }}" class="btn btn-danger">
+                <i class="bi bi-file-pdf"></i> Download PDF
+            </a>
+        </div>
     </div>
 
+    <!-- Search and Filters -->
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-3">
-                    <select name="vendor_id" class="form-select">
-                        <option value="">All Vendors</option>
-                        @foreach($vendors as $id => $name)<option value="{{ $id }}" {{ request('vendor_id') == $id ? 'selected' : '' }}>{{ $name }}</option>@endforeach
-                    </select>
+                    <label class="form-label">Search</label>
+                    <input type="text" name="search" class="form-control" placeholder="Order # or Vendor..." value="{{ request('search') }}">
                 </div>
                 <div class="col-md-3">
+                    <label class="form-label">Vendor</label>
+                    <select name="vendor_id" class="form-select">
+                        <option value="">All Vendors</option>
+                        @foreach($vendors as $id => $name)
+                            <option value="{{ $id }}" {{ request('vendor_id') == $id ? 'selected' : '' }}>{{ $name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
                     <select name="status" class="form-select">
                         <option value="">All Status</option>
                         <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending</option>
                         <option value="settled" {{ request('status') === 'settled' ? 'selected' : '' }}>Settled</option>
+                        <option value="cancelled" {{ request('status') === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
                     </select>
                 </div>
-                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button></div>
+                <div class="col-md-2">
+                    <label class="form-label">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                </div>
+                <div class="col-md-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                    <a href="{{ route('admin.finances.reports') }}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                </div>
             </form>
         </div>
     </div>
 
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Orders Value</h6>
+                    <h4>KES {{ number_format($transactions->sum('order_subtotal'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Commission</h6>
+                    <h4>KES {{ number_format($transactions->sum('platform_commission'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Profit</h6>
+                    <h4 class="text-success">KES {{ number_format($transactions->sum('admin_profit'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Transactions</h6>
+                    <h4>{{ $transactions->total() }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Date</th><th>Order ID</th><th>Vendor</th><th>Order Total</th><th>Commission</th><th>Delivery</th><th>Rider</th><th>Profit</th><th>Status</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Order #</th>
+                        <th>Vendor</th>
+                        <th>Order Total</th>
+                        <th>Commission</th>
+                        <th>Delivery</th>
+                        <th>Rider Fee</th>
+                        <th>Profit</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($transactions as $trans)
                         <tr>
-                            <td>{{ $trans->created_at->format('M d, Y') }}</td>
+                            <td>{{ $trans->created_at->format('M d, Y H:i') }}</td>
                             <td>#{{ $trans->order->id ?? 'N/A' }}</td>
+                            <td><strong>{{ $trans->order->order_number ?? 'N/A' }}</strong></td>
                             <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
                             <td>KES {{ number_format($trans->order_subtotal, 2) }}</td>
                             <td>KES {{ number_format($trans->platform_commission, 2) }}</td>
                             <td>KES {{ number_format($trans->delivery_fee, 2) }}</td>
                             <td>KES {{ number_format($trans->rider_fee, 2) }}</td>
-                            <td><strong>KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
-                            <td><span class="badge bg-info">{{ ucfirst($trans->status) }}</span></td>
+                            <td><strong class="text-success">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
+                            <td>
+                                @if($trans->status === 'settled')
+                                    <span class="badge bg-success">Settled</span>
+                                @elseif($trans->status === 'pending')
+                                    <span class="badge bg-warning">Pending</span>
+                                @else
+                                    <span class="badge bg-danger">Cancelled</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center py-4">No records</td></tr>
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="mt-2 text-muted">No records found</p>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -25232,48 +26361,187 @@ document.addEventListener('DOMContentLoaded', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/admin/finances/dashboard.blade.php
-📏 Size: 3213 bytes
+📏 Size: 7880 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
 @section('content')
 <div class="container-fluid py-4">
-    <h1 class="mb-4"><i class="bi bi-graph-up"></i> Finance Dashboard</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0"><i class="bi bi-graph-up"></i> Finance Dashboard</h1>
+        <a href="{{ route('admin.finances.sync') }}" class="btn btn-warning" onclick="return confirm('Sync all past orders?')">
+            <i class="bi bi-arrow-repeat"></i> Sync Orders
+        </a>
+    </div>
 
+    <!-- Status Summary Cards -->
     <div class="row mb-4">
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Orders Value</h5><h3 style="color:#05bb14;">KES {{ number_format($totalOrders, 2) }}</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Profit</h5><h3 style="color:#05bb14;">KES {{ number_format($totalProfit, 2) }}</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Profit Margin</h5><h3 style="color:#237bdd;">{{ round($profitMargin, 2) }}%</h3></div></div></div>
-        <div class="col-md-3"><div class="card"><div class="card-body text-center"><h5 class="text-muted">Total Orders</h5><h3>{{ $orderCount }}</h3></div></div></div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Settled Transactions</h6>
+                    <h3 class="fw-bold text-success">{{ $settledCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Pending Transactions</h6>
+                    <h3 class="fw-bold text-warning">{{ $pendingCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Cancelled Transactions</h6>
+                    <h3 class="fw-bold text-danger">{{ $cancelledCount ?? 0 }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="row mb-4">
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Platform Commission</h6><h4>KES {{ number_format($platformCommission, 2) }}</h4></div></div></div>
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Delivery Fees</h6><h4>KES {{ number_format($deliveryFees, 2) }}</h4></div></div></div>
-        <div class="col-md-4"><div class="card"><div class="card-body"><h6 class="text-muted">Rider Fees Paid</h6><h4>KES {{ number_format($riderFees, 2) }}</h4></div></div></div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Orders Value</h5>
+                    <h3 style="color:#05bb14;">KES {{ number_format($totalOrders, 2) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Profit</h5>
+                    <h3 style="color:#05bb14;">KES {{ number_format($totalProfit, 2) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Profit Margin</h5>
+                    <h3 style="color:#237bdd;">{{ round($profitMargin, 2) }}%</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="text-muted">Total Orders</h5>
+                    <h3>{{ $orderCount }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Platform Commission</h6>
+                    <h4>KES {{ number_format($platformCommission, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Delivery Fees Collected</h6>
+                    <h4>KES {{ number_format($deliveryFees, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Rider Fees Paid</h6>
+                    <h4>KES {{ number_format($riderFees, 2) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Form -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <a href="{{ route('admin.finances.dashboard') }}" class="btn btn-secondary w-100">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
     <div class="card">
-        <div class="card-header"><h5>Recent Transactions</h5></div>
+        <div class="card-header">
+            <h5 class="mb-0">Recent Transactions</h5>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Order ID</th><th>Vendor</th><th>Order Total</th><th>Commission</th><th>Delivery Fee</th><th>Rider Fee</th><th>Profit</th><th>Status</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Order #</th>
+                        <th>Vendor</th>
+                        <th>Order Total</th>
+                        <th>Commission</th>
+                        <th>Delivery Fee</th>
+                        <th>Rider Fee</th>
+                        <th>Profit</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($transactions as $trans)
                         <tr>
+                            <td>{{ $trans->created_at->setTimezone('Africa/Nairobi')->format('Y-m-d H:i') }}</td>
                             <td>#{{ $trans->order->id ?? 'N/A' }}</td>
+                            <td><strong>{{ $trans->order->order_number ?? 'N/A' }}</strong></td>
                             <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
                             <td>KES {{ number_format($trans->order_subtotal, 2) }}</td>
                             <td>KES {{ number_format($trans->platform_commission, 2) }}</td>
                             <td>KES {{ number_format($trans->delivery_fee, 2) }}</td>
                             <td>KES {{ number_format($trans->rider_fee, 2) }}</td>
-                            <td><strong style="color:#05bb14;">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
-                            <td><span class="badge bg-info">{{ ucfirst($trans->status) }}</span></td>
+                            <td><strong class="text-success">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
+                            <td>
+                                @if($trans->status === 'settled')
+                                    <span class="badge bg-success">Settled</span>
+                                @elseif($trans->status === 'pending')
+                                    <span class="badge bg-warning">Pending</span>
+                                @else
+                                    <span class="badge bg-danger">Cancelled</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center py-4">No transactions</td></tr>
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="mt-2 text-muted">No transactions found. Click "Sync Orders" to import past orders.</p>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -25326,60 +26594,300 @@ document.addEventListener('DOMContentLoaded', function() {
 @endsection
 
 ────────────────────────────────────────────────────────────────────────────────
+📄 File: resources/views/admin/finances/pdf-report.blade.php
+📏 Size: 4481 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Finance Report - Ali Safi</title>
+    <style>
+        body {
+            font-family: 'DejaVu Sans', sans-serif;
+            font-size: 12px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #05bb14;
+            padding-bottom: 10px;
+        }
+        .header h1 {
+            color: #05bb14;
+            margin: 0;
+        }
+        .filters {
+            background: #f8f9fa;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #05bb14;
+            color: white;
+        }
+        .summary {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 10px;
+            color: #666;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-success {
+            color: #05bb14;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Ali Safi Finance Report</h1>
+        <p>Generated on: {{ $generated_at->format('F d, Y H:i:s') }}</p>
+    </div>
+
+    @if(!empty($filters))
+    <div class="filters">
+        <strong>Filters Applied:</strong>
+        <ul>
+            @if($filters['vendor_id'])
+                <li>Vendor ID: {{ $filters['vendor_id'] }}</li>
+            @endif
+            @if($filters['status'])
+                <li>Status: {{ ucfirst($filters['status']) }}</li>
+            @endif
+            @if($filters['date_from'])
+                <li>From: {{ $filters['date_from'] }}</li>
+            @endif
+            @if($filters['date_to'])
+                <li>To: {{ $filters['date_to'] }}</li>
+            @endif
+            @if($filters['search'])
+                <li>Search: {{ $filters['search'] }}</li>
+            @endif
+        </ul>
+    </div>
+    @endif
+
+    <div class="summary">
+        <table style="width: 100%; border: none;">
+            <tr>
+                <td style="border: none;"><strong>Total Orders Value:</strong></td>
+                <td style="border: none;" class="text-right">KES {{ number_format($total_orders_value, 2) }}</td>
+                <td style="border: none; width: 50px;"></td>
+                <td style="border: none;"><strong>Total Profit:</strong></td>
+                <td style="border: none;" class="text-right text-success">KES {{ number_format($total_profit, 2) }}</td>
+            </tr>
+            <tr>
+                <td style="border: none;"><strong>Total Transactions:</strong></td>
+                <td style="border: none;" class="text-right">{{ $transactions->count() }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Order #</th>
+                <th>Vendor</th>
+                <th>Order Total</th>
+                <th>Commission</th>
+                <th>Delivery Fee</th>
+                <th>Rider Fee</th>
+                <th>Profit</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($transactions as $trans)
+            <tr>
+                <td>{{ $trans->created_at->format('Y-m-d H:i') }}</td>
+                <td>{{ $trans->order->order_number ?? 'N/A' }}</td>
+                <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
+                <td class="text-right">KES {{ number_format($trans->order_subtotal, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->platform_commission, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->delivery_fee, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->rider_fee, 2) }}</td>
+                <td class="text-right">KES {{ number_format($trans->admin_profit, 2) }}</td>
+                <td>{{ ucfirst($trans->status) }}</td>
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>This is a system-generated report. For any queries, please contact support.</p>
+    </div>
+</body>
+</html>
+
+────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/admin/finances/reports.blade.php
-📏 Size: 3116 bytes
+📏 Size: 7271 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
 @section('content')
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between mb-4">
-        <h1><i class="bi bi-file-earmark-pdf"></i> Finance Reports</h1>
-        <a href="{{ route('admin.finances.download-report', request()->query()) }}" class="btn btn-success"><i class="bi bi-download"></i> Download CSV</a>
+        <h1><i class="bi bi-file-earmark-text"></i> Finance Reports</h1>
+        <div>
+            <a href="{{ route('admin.finances.download-report', array_merge(request()->query(), ['format' => 'csv'])) }}" class="btn btn-success me-2">
+                <i class="bi bi-download"></i> Download CSV
+            </a>
+            <a href="{{ route('admin.finances.download-report', array_merge(request()->query(), ['format' => 'pdf'])) }}" class="btn btn-danger">
+                <i class="bi bi-file-pdf"></i> Download PDF
+            </a>
+        </div>
     </div>
 
+    <!-- Search and Filters -->
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-3">
-                    <select name="vendor_id" class="form-select">
-                        <option value="">All Vendors</option>
-                        @foreach($vendors as $id => $name)<option value="{{ $id }}" {{ request('vendor_id') == $id ? 'selected' : '' }}>{{ $name }}</option>@endforeach
-                    </select>
+                    <label class="form-label">Search</label>
+                    <input type="text" name="search" class="form-control" placeholder="Order # or Vendor..." value="{{ request('search') }}">
                 </div>
                 <div class="col-md-3">
+                    <label class="form-label">Vendor</label>
+                    <select name="vendor_id" class="form-select">
+                        <option value="">All Vendors</option>
+                        @foreach($vendors as $id => $name)
+                            <option value="{{ $id }}" {{ request('vendor_id') == $id ? 'selected' : '' }}>{{ $name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
                     <select name="status" class="form-select">
                         <option value="">All Status</option>
                         <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>Pending</option>
                         <option value="settled" {{ request('status') === 'settled' ? 'selected' : '' }}>Settled</option>
+                        <option value="cancelled" {{ request('status') === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
                     </select>
                 </div>
-                <div class="col-md-2"><button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button></div>
+                <div class="col-md-2">
+                    <label class="form-label">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                </div>
+                <div class="col-md-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                    <a href="{{ route('admin.finances.reports') }}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </a>
+                </div>
             </form>
         </div>
     </div>
 
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Orders Value</h6>
+                    <h4>KES {{ number_format($transactions->sum('order_subtotal'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Commission</h6>
+                    <h4>KES {{ number_format($transactions->sum('platform_commission'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Profit</h6>
+                    <h4 class="text-success">KES {{ number_format($transactions->sum('admin_profit'), 2) }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Transactions</h6>
+                    <h4>{{ $transactions->total() }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transactions Table -->
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr><th>Date</th><th>Order ID</th><th>Vendor</th><th>Order Total</th><th>Commission</th><th>Delivery</th><th>Rider</th><th>Profit</th><th>Status</th></tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Order #</th>
+                        <th>Vendor</th>
+                        <th>Order Total</th>
+                        <th>Commission</th>
+                        <th>Delivery</th>
+                        <th>Rider Fee</th>
+                        <th>Profit</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($transactions as $trans)
                         <tr>
-                            <td>{{ $trans->created_at->format('M d, Y') }}</td>
+                            <td>{{ $trans->created_at->format('M d, Y H:i') }}</td>
                             <td>#{{ $trans->order->id ?? 'N/A' }}</td>
+                            <td><strong>{{ $trans->order->order_number ?? 'N/A' }}</strong></td>
                             <td>{{ $trans->vendor->business_name ?? 'N/A' }}</td>
                             <td>KES {{ number_format($trans->order_subtotal, 2) }}</td>
                             <td>KES {{ number_format($trans->platform_commission, 2) }}</td>
                             <td>KES {{ number_format($trans->delivery_fee, 2) }}</td>
                             <td>KES {{ number_format($trans->rider_fee, 2) }}</td>
-                            <td><strong>KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
-                            <td><span class="badge bg-info">{{ ucfirst($trans->status) }}</span></td>
+                            <td><strong class="text-success">KES {{ number_format($trans->admin_profit, 2) }}</strong></td>
+                            <td>
+                                @if($trans->status === 'settled')
+                                    <span class="badge bg-success">Settled</span>
+                                @elseif($trans->status === 'pending')
+                                    <span class="badge bg-warning">Pending</span>
+                                @else
+                                    <span class="badge bg-danger">Cancelled</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-center py-4">No records</td></tr>
+                        <tr>
+                            <td colspan="10" class="text-center py-5">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                <p class="mt-2 text-muted">No records found</p>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -31959,7 +33467,7 @@ window.addEventListener('beforeunload', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/customer/products/index.blade.php
-📏 Size: 8135 bytes
+📏 Size: 8376 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
@@ -32025,51 +33533,51 @@ window.addEventListener('beforeunload', function() {
     @if($products->count())
         <div class="row g-4">
             @foreach($products as $product)
-            <div class="col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                        @if($product->image)
-                            <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
-                        @else
-                            <div class="text-center">
-                                <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
-                                <p class="text-muted small mt-2 mb-0">No image</p>
-                            </div>
-                        @endif
-                    </div>
-                    <div class="card-body">
-                        <h5 class="card-title">{{ $product->name }}</h5>
-                        <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
-                        
-                        <div class="mb-3">
-                            <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
-                            @php
-                                $vendor = $product->vendors()->first();
-                            @endphp
-                            @if($vendor && $vendor->is_open)
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle"></i> Open
-                                </span>
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            @if($product->image)
+                                <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
                             @else
-                                <span class="badge bg-secondary">
-                                    <i class="bi bi-lock"></i> Closed
-                                </span>
+                                <div class="text-center">
+                                    <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
+                                    <p class="text-muted small mt-2 mb-0">No image</p>
+                                </div>
                             @endif
                         </div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ $product->name }}</h5>
+                            <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
+                            
+                            <div class="mb-3">
+                                <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
+                                @php
+                                    $vendor = $product->vendors()->first();
+                                @endphp
+                                @if($vendor && $vendor->is_open)
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i> Open
+                                    </span>
+                                @else
+                                    <span class="badge bg-secondary">
+                                        <i class="bi bi-lock"></i> Closed
+                                    </span>
+                                @endif
+                            </div>
 
-                        <h6 class="fw-bold mb-3">
-                            KES {{ number_format($product->final_price, 0) }}
-                        </h6>
+                            <h6 class="fw-bold mb-3" style="color: var(--primary-green);">
+                                KES {{ number_format($product->customer_price ?? $product->final_price, 0) }}
+                            </h6>
 
-                        <div class="d-grid gap-2">
-                            <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
-                                <i class="bi bi-eye"></i> View Details
-                            </a>
+                            <div class="d-grid gap-2">
+                                <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-eye"></i> View Details
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        @endforeach
+                @endforeach
         </div>
 
         <!-- Pagination -->
@@ -32152,7 +33660,7 @@ window.addEventListener('beforeunload', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/customer/products/show.blade.php
-📏 Size: 19550 bytes
+📏 Size: 20965 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
@@ -32225,8 +33733,14 @@ window.addEventListener('beforeunload', function() {
                     <!-- Pricing -->
                     <div class="mb-4 pb-3 border-bottom">
                         <div class="d-flex align-items-baseline gap-3">
-                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">KES {{ number_format($product->final_price, 0) }}</h2>
-                            <span class="text-decoration-line-through text-muted">KES {{ number_format($product->base_price, 0) }}</span>
+                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">
+                                KES {{ number_format($customerPrice ?? $product->final_price, 0) }}
+                            </h2>
+                            @if(($customerPrice ?? $product->final_price) < $product->base_price)
+                                <span class="text-decoration-line-through text-muted">
+                                    KES {{ number_format($product->base_price, 0) }}
+                                </span>
+                            @endif
                         </div>
                         <p class="small text-muted mb-0">{{ $product->description }}</p>
                     </div>
@@ -32242,20 +33756,32 @@ window.addEventListener('beforeunload', function() {
                         
                         <div class="mb-4">
                             <!-- Size Selection -->
-                            @php
-                                $sizes = json_decode($product->sizes, true) ?? [];
-                            @endphp
-                            @if($sizes)
-                                <div class="mb-4">
-                                    <label class="form-label fw-bold mb-2">Size</label>
-                                    <div class="d-flex gap-2">
-                                        @foreach($sizes as $index => $size)
-                                            <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
-                                            <label class="btn btn-outline-secondary" for="size_{{ $index }}">{{ $size }}</label>
-                                        @endforeach
+                                @php
+                                    $sizes = json_decode($product->sizes, true) ?? [];
+                                    $sizePrices = json_decode($product->size_prices, true) ?? [];
+                                @endphp
+
+                                @if(!empty($sizes))
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold mb-2">Size</label>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @foreach($sizes as $index => $size)
+                                                <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" 
+                                                    value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
+                                                <label class="btn btn-outline-secondary" for="size_{{ $index }}">
+                                                    {{ $size }}
+                                                    @php
+                                                        // Use admin price if available, otherwise use original size price
+                                                        $sizePrice = isset($sizePricesWithMarkup[$size]) 
+                                                            ? $sizePricesWithMarkup[$size] 
+                                                            : ($sizePrices[$size] ?? $customerPrice ?? $product->final_price);
+                                                    @endphp
+                                                    <br><small class="text-success">KES {{ number_format($sizePrice, 0) }}</small>
+                                                </label>
+                                            @endforeach
+                                        </div>
                                     </div>
-                                </div>
-                            @endif
+                                @endif
 
                             <!-- Quantity -->
                             <div class="mb-4">
@@ -32271,7 +33797,7 @@ window.addEventListener('beforeunload', function() {
                             <!-- Total Price -->
                             <div class="mb-4 p-3 rounded" style="background-color: #f8f9fa;">
                                 <p class="text-muted mb-2">Total Price:</p>
-                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($product->final_price, 0) }}</span></h5>
+                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($customerPrice ?? $product->final_price, 0) }}</span></h5>
                             </div>
                         </div>
 
@@ -32450,10 +33976,10 @@ window.addEventListener('beforeunload', function() {
 <script>
     // Get price data from product
     @php
-        $sizePrices = json_decode($product->size_prices, true) ?? [];
+        $sizePricesForJs = !empty($sizePricesWithMarkup) ? $sizePricesWithMarkup : (json_decode($product->size_prices, true) ?? []);
     @endphp
-    const sizePrices = {!! json_encode($sizePrices) !!};
-    const basePrice = {{ $product->final_price }};
+    const sizePrices = {!! json_encode($sizePricesForJs) !!};
+    const basePrice = {{ $customerPrice ?? $product->final_price }};
 
     function updateTotalPrice() {
         const quantity = parseInt(document.getElementById('quantity').value) || 1;
@@ -35324,7 +36850,7 @@ window.addEventListener('beforeunload', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/customer/products/index.blade.php
-📏 Size: 8135 bytes
+📏 Size: 8376 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
@@ -35390,51 +36916,51 @@ window.addEventListener('beforeunload', function() {
     @if($products->count())
         <div class="row g-4">
             @foreach($products as $product)
-            <div class="col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                        @if($product->image)
-                            <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
-                        @else
-                            <div class="text-center">
-                                <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
-                                <p class="text-muted small mt-2 mb-0">No image</p>
-                            </div>
-                        @endif
-                    </div>
-                    <div class="card-body">
-                        <h5 class="card-title">{{ $product->name }}</h5>
-                        <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
-                        
-                        <div class="mb-3">
-                            <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
-                            @php
-                                $vendor = $product->vendors()->first();
-                            @endphp
-                            @if($vendor && $vendor->is_open)
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle"></i> Open
-                                </span>
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-img-top" style="background-color: #f8f9fa; height: 200px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            @if($product->image)
+                                <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" style="width: 100%; height: 100%; object-fit: cover;">
                             @else
-                                <span class="badge bg-secondary">
-                                    <i class="bi bi-lock"></i> Closed
-                                </span>
+                                <div class="text-center">
+                                    <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
+                                    <p class="text-muted small mt-2 mb-0">No image</p>
+                                </div>
                             @endif
                         </div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ $product->name }}</h5>
+                            <p class="card-text text-muted small">{{ Str::limit($product->description, 100) }}</p>
+                            
+                            <div class="mb-3">
+                                <span class="badge bg-success">{{ $product->category->name ?? 'Uncategorized' }}</span>
+                                @php
+                                    $vendor = $product->vendors()->first();
+                                @endphp
+                                @if($vendor && $vendor->is_open)
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i> Open
+                                    </span>
+                                @else
+                                    <span class="badge bg-secondary">
+                                        <i class="bi bi-lock"></i> Closed
+                                    </span>
+                                @endif
+                            </div>
 
-                        <h6 class="fw-bold mb-3">
-                            KES {{ number_format($product->final_price, 0) }}
-                        </h6>
+                            <h6 class="fw-bold mb-3" style="color: var(--primary-green);">
+                                KES {{ number_format($product->customer_price ?? $product->final_price, 0) }}
+                            </h6>
 
-                        <div class="d-grid gap-2">
-                            <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
-                                <i class="bi bi-eye"></i> View Details
-                            </a>
+                            <div class="d-grid gap-2">
+                                <a href="{{ route('customer.products.show', $product) }}" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-eye"></i> View Details
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        @endforeach
+                @endforeach
         </div>
 
         <!-- Pagination -->
@@ -35517,7 +37043,7 @@ window.addEventListener('beforeunload', function() {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: resources/views/customer/products/show.blade.php
-📏 Size: 19550 bytes
+📏 Size: 20965 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 @extends('layouts.app')
@@ -35590,8 +37116,14 @@ window.addEventListener('beforeunload', function() {
                     <!-- Pricing -->
                     <div class="mb-4 pb-3 border-bottom">
                         <div class="d-flex align-items-baseline gap-3">
-                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">KES {{ number_format($product->final_price, 0) }}</h2>
-                            <span class="text-decoration-line-through text-muted">KES {{ number_format($product->base_price, 0) }}</span>
+                            <h2 class="h4 fw-bold" style="color: var(--primary-green);">
+                                KES {{ number_format($customerPrice ?? $product->final_price, 0) }}
+                            </h2>
+                            @if(($customerPrice ?? $product->final_price) < $product->base_price)
+                                <span class="text-decoration-line-through text-muted">
+                                    KES {{ number_format($product->base_price, 0) }}
+                                </span>
+                            @endif
                         </div>
                         <p class="small text-muted mb-0">{{ $product->description }}</p>
                     </div>
@@ -35607,20 +37139,32 @@ window.addEventListener('beforeunload', function() {
                         
                         <div class="mb-4">
                             <!-- Size Selection -->
-                            @php
-                                $sizes = json_decode($product->sizes, true) ?? [];
-                            @endphp
-                            @if($sizes)
-                                <div class="mb-4">
-                                    <label class="form-label fw-bold mb-2">Size</label>
-                                    <div class="d-flex gap-2">
-                                        @foreach($sizes as $index => $size)
-                                            <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
-                                            <label class="btn btn-outline-secondary" for="size_{{ $index }}">{{ $size }}</label>
-                                        @endforeach
+                                @php
+                                    $sizes = json_decode($product->sizes, true) ?? [];
+                                    $sizePrices = json_decode($product->size_prices, true) ?? [];
+                                @endphp
+
+                                @if(!empty($sizes))
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold mb-2">Size</label>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            @foreach($sizes as $index => $size)
+                                                <input type="radio" class="btn-check" name="size" id="size_{{ $index }}" 
+                                                    value="{{ $size }}" {{ $index === 0 ? 'checked' : '' }}>
+                                                <label class="btn btn-outline-secondary" for="size_{{ $index }}">
+                                                    {{ $size }}
+                                                    @php
+                                                        // Use admin price if available, otherwise use original size price
+                                                        $sizePrice = isset($sizePricesWithMarkup[$size]) 
+                                                            ? $sizePricesWithMarkup[$size] 
+                                                            : ($sizePrices[$size] ?? $customerPrice ?? $product->final_price);
+                                                    @endphp
+                                                    <br><small class="text-success">KES {{ number_format($sizePrice, 0) }}</small>
+                                                </label>
+                                            @endforeach
+                                        </div>
                                     </div>
-                                </div>
-                            @endif
+                                @endif
 
                             <!-- Quantity -->
                             <div class="mb-4">
@@ -35636,7 +37180,7 @@ window.addEventListener('beforeunload', function() {
                             <!-- Total Price -->
                             <div class="mb-4 p-3 rounded" style="background-color: #f8f9fa;">
                                 <p class="text-muted mb-2">Total Price:</p>
-                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($product->final_price, 0) }}</span></h5>
+                                <h5 class="fw-bold" style="color: var(--primary-green);">KES <span id="totalPrice">{{ number_format($customerPrice ?? $product->final_price, 0) }}</span></h5>
                             </div>
                         </div>
 
@@ -35815,10 +37359,10 @@ window.addEventListener('beforeunload', function() {
 <script>
     // Get price data from product
     @php
-        $sizePrices = json_decode($product->size_prices, true) ?? [];
+        $sizePricesForJs = !empty($sizePricesWithMarkup) ? $sizePricesWithMarkup : (json_decode($product->size_prices, true) ?? []);
     @endphp
-    const sizePrices = {!! json_encode($sizePrices) !!};
-    const basePrice = {{ $product->final_price }};
+    const sizePrices = {!! json_encode($sizePricesForJs) !!};
+    const basePrice = {{ $customerPrice ?? $product->final_price }};
 
     function updateTotalPrice() {
         const quantity = parseInt(document.getElementById('quantity').value) || 1;
@@ -40112,6 +41656,70 @@ return new class extends Migration
     }
 };
 
+────────────────────────────────────────────────────────────────────────────────
+📄 File: database/migrations/2026_05_15_051845_add_rider_assigned_to_order_tracking_status.php
+📏 Size: 700 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    public function up()
+    {
+        DB::statement("ALTER TABLE order_tracking MODIFY COLUMN status ENUM('pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'in_transit', 'delivered', 'cancelled', 'rider_assigned') NOT NULL");
+    }
+
+    public function down()
+    {
+        DB::statement("ALTER TABLE order_tracking MODIFY COLUMN status ENUM('pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'in_transit', 'delivered', 'cancelled') NOT NULL");
+    }
+};
+
+────────────────────────────────────────────────────────────────────────────────
+📄 File: database/migrations/2026_05_15_070300_fix_admin_commissions_dates_trigger.php
+📏 Size: 671 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up()
+    {
+        // Fix existing records
+        DB::statement("
+            UPDATE admin_commissions ac
+            JOIN orders o ON o.id = ac.order_id
+            SET 
+                ac.created_at = o.created_at,
+                ac.updated_at = o.updated_at
+            WHERE ac.created_at != o.created_at
+        ");
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        //
+    }
+};
+
+
 
 ================================================================================
 
@@ -41224,7 +42832,7 @@ class MpesaService
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Services/OrderMatchingService.php
-📏 Size: 3767 bytes
+📏 Size: 4656 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -41258,9 +42866,16 @@ class OrderMatchingService
 
     /**
      * Match order with nearest available rider
+     * 
+     * @deprecated Riders should only be assigned when order status is 'ready_for_pickup'
+     * Use the rider's accept functionality instead.
      */
     public function matchRider(Order $order): ?Rider
     {
+        \Log::warning('matchRider() called - this method is deprecated. Riders should accept orders manually when status is ready_for_pickup.', [
+            'order_id' => $order->id ?? null
+        ]);
+        
         $maxDistance = config('app.max_delivery_distance', 15); // km
         
         $riders = Rider::query()
@@ -41277,6 +42892,7 @@ class OrderMatchingService
 
     /**
      * Find nearest available rider to a vendor
+     * Used for Admin manual assignment only
      */
     public function findNearestRider(Vendor $vendor): ?Rider
     {
@@ -41295,7 +42911,10 @@ class OrderMatchingService
     }
 
     /**
-     * Auto-match order with vendor and rider
+     * Auto-match order with vendor only (NO rider assignment)
+     * 
+     * This method only assigns a vendor to the order.
+     * Riders should only be assigned when the order status becomes 'ready_for_pickup'.
      */
     public function autoMatch(Order $order): bool
     {
@@ -41304,22 +42923,26 @@ class OrderMatchingService
             return false;
         }
 
-        $rider = $this->matchRider($order);
-        if (!$rider) {
-            return false;
-        }
+        // NOTE: Rider assignment removed from auto-match
+        // Riders will accept orders manually when status is 'ready_for_pickup'
 
-        // Update order with matched vendor and rider
+        // Update order with matched vendor only (NO rider)
         $order->update([
             'vendor_id' => $vendor->id,
-            'rider_id' => $rider->id,
+            // 'rider_id' => $rider->id, // REMOVED - Rider not assigned here
             'status' => 'confirmed',
         ]);
 
         // Create tracking record
         $order->tracking()->create([
             'status' => 'confirmed',
-            'notes' => 'Order confirmed and assigned to vendor and rider',
+            'notes' => 'Order confirmed and assigned to vendor. Rider will be assigned when order is ready for pickup.',
+        ]);
+
+        \Log::info('Order auto-matched with vendor only', [
+            'order_id' => $order->id,
+            'vendor_id' => $vendor->id,
+            'status' => 'confirmed'
         ]);
 
         return true;
@@ -41345,7 +42968,6 @@ class OrderMatchingService
         return round($distance, 2);
     }
 }
-
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Services/WhatsAppService.php
@@ -41679,6 +43301,152 @@ class AppServiceProvider extends ServiceProvider
 }
 
 
+────────────────────────────────────────────────────────────────────────────────
+📄 File: app/Providers/EventServiceProvider.php
+📏 Size: 934 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<?php
+namespace App\Providers;
+
+use App\Models\Order;
+use App\Observers\OrderObserver;
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
+use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+
+class EventServiceProvider extends ServiceProvider
+{
+    /**
+     * The event to listener mappings for the application.
+     *
+     * @var array<class-string, array<int, class-string>>
+     */
+    protected $listen = [
+        Registered::class => [
+            SendEmailVerificationNotification::class,
+        ],
+    ];
+
+    /**
+     * Register any events for your application.
+     */
+    public function boot(): void
+    {
+        Order::observe(OrderObserver::class);
+    }
+
+    /**
+     * Determine if events and listeners should be automatically discovered.
+     */
+    public function shouldDiscoverEvents(): bool
+    {
+        return false;
+    }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+📄 File: app/Providers/OrderObserver.php
+📏 Size: 3057 bytes
+────────────────────────────────────────────────────────────────────────────────
+
+<?php
+
+namespace App\Observers;
+
+use App\Models\Order;
+use App\Models\AdminCommission;
+use App\Models\Setting;
+
+class OrderObserver
+{
+    /**
+     * Handle the Order "created" event.
+     */
+    public function created(Order $order): void
+    {
+        $this->createAdminCommission($order);
+    }
+
+    /**
+     * Handle the Order "updated" event.
+     */
+    public function updated(Order $order): void
+    {
+        // Only create/update commission when order is delivered or cancelled
+        if ($order->isDirty('status')) {
+            if ($order->status === 'delivered') {
+                $this->updateAdminCommission($order);
+            } elseif ($order->status === 'cancelled') {
+                $this->cancelAdminCommission($order);
+            }
+        }
+    }
+
+    /**
+     * Create admin commission record for the order
+     */
+    protected function createAdminCommission(Order $order): void
+    {
+        if (AdminCommission::where('order_id', $order->id)->exists()) {
+            return;
+        }
+
+        $commissionPercentage = Setting::get('platform_fee_percentage', 5);
+        
+        $platformCommission = $order->subtotal * ($commissionPercentage / 100);
+        $riderFee = $order->rider_id ? $order->delivery_fee : 0;
+        $adminProfit = $platformCommission + $order->delivery_fee + $riderFee;
+        $vendorAmount = $order->subtotal - $platformCommission;
+
+        AdminCommission::create([
+            'vendor_id' => $order->vendor_id,
+            'order_id' => $order->id,
+            'order_subtotal' => $order->subtotal,
+            'vendor_amount' => $vendorAmount,
+            'platform_commission' => $platformCommission,
+            'commission_percentage' => $commissionPercentage,
+            'delivery_fee' => $order->delivery_fee,
+            'rider_fee' => $riderFee,
+            'admin_profit' => $adminProfit,
+            'status' => $order->status === 'delivered' ? 'settled' : 'pending',
+            'created_at' => $order->created_at, // ADD THIS
+            'updated_at' => $order->updated_at, // ADD THIS
+        ]);
+
+        \Log::info('AdminCommission created', [
+            'order_id' => $order->id,
+            'admin_profit' => $adminProfit,
+            'created_at' => $order->created_at
+        ]);
+    }
+
+    /**
+     * Update admin commission when order is delivered
+     */
+    protected function updateAdminCommission(Order $order): void
+    {
+        $commission = AdminCommission::where('order_id', $order->id)->first();
+        
+        if ($commission) {
+            $commission->update([
+                'status' => 'settled',
+                'admin_profit' => $commission->platform_commission + $commission->delivery_fee + $commission->rider_fee,
+            ]);
+        } else {
+            $this->createAdminCommission($order);
+        }
+    }
+
+    /**
+     * Cancel admin commission when order is cancelled
+     */
+    protected function cancelAdminCommission(Order $order): void
+    {
+        AdminCommission::where('order_id', $order->id)->update(['status' => 'cancelled']);
+    }
+}
+
 
 ================================================================================
 
@@ -41779,7 +43547,7 @@ Artisan::command('inspire', function () {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: routes/web.php
-📏 Size: 11801 bytes
+📏 Size: 11909 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -41939,6 +43707,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/finances/reports', [AdminFinanceController::class, 'reports'])->name('finances.reports');
         Route::get('/finances/reports/download', [AdminFinanceController::class, 'downloadReport'])->name('finances.download-report');
         Route::get('/finances/vendor-settlement', [AdminFinanceController::class, 'vendorSettlement'])->name('finances.vendor-settlement');
+        Route::get('/finances/sync', [AdminFinanceController::class, 'syncOrders'])->name('finances.sync');
         
         // Order Assignment (Rider Assignment)
         Route::get('/orders/assignment', [AdminOrderAssignmentController::class, 'index'])->name('orders.assignment');
@@ -41984,7 +43753,7 @@ Route::prefix('api/v1')->middleware('auth:sanctum')->group(function () {
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: config/app.php
-📏 Size: 4272 bytes
+📏 Size: 4283 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -42054,7 +43823,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => 'Africa/Nairobi',
 
     /*
     |--------------------------------------------------------------------------
@@ -55367,7 +57136,7 @@ export default defineConfig({
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: .env.example
-📏 Size: 2045 bytes
+📏 Size: 2073 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 APP_NAME="Ali-Safi"
@@ -55381,6 +57150,7 @@ APP_FALLBACK_LOCALE=en
 APP_FAKER_LOCALE=en_US
 
 APP_MAINTENANCE_DRIVER=file
+APP_TIMEZONE=Africa/Nairobi
 # APP_MAINTENANCE_STORE=database
 
 # PHP_CLI_SERVER_WORKERS=4
@@ -55464,7 +57234,7 @@ MPESA_TRANSACTION_DESC="AliSafi Order"
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: .env
-📏 Size: 2074 bytes
+📏 Size: 2102 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 APP_NAME="Ali-Safi"
@@ -55478,6 +57248,7 @@ APP_FALLBACK_LOCALE=en
 APP_FAKER_LOCALE=en_US
 
 APP_MAINTENANCE_DRIVER=file
+APP_TIMEZONE=Africa/Nairobi
 # APP_MAINTENANCE_STORE=database
 
 # PHP_CLI_SERVER_WORKERS=4

@@ -29,9 +29,16 @@ class OrderMatchingService
 
     /**
      * Match order with nearest available rider
+     * 
+     * @deprecated Riders should only be assigned when order status is 'ready_for_pickup'
+     * Use the rider's accept functionality instead.
      */
     public function matchRider(Order $order): ?Rider
     {
+        \Log::warning('matchRider() called - this method is deprecated. Riders should accept orders manually when status is ready_for_pickup.', [
+            'order_id' => $order->id ?? null
+        ]);
+        
         $maxDistance = config('app.max_delivery_distance', 15); // km
         
         $riders = Rider::query()
@@ -48,6 +55,7 @@ class OrderMatchingService
 
     /**
      * Find nearest available rider to a vendor
+     * Used for Admin manual assignment only
      */
     public function findNearestRider(Vendor $vendor): ?Rider
     {
@@ -66,7 +74,10 @@ class OrderMatchingService
     }
 
     /**
-     * Auto-match order with vendor and rider
+     * Auto-match order with vendor only (NO rider assignment)
+     * 
+     * This method only assigns a vendor to the order.
+     * Riders should only be assigned when the order status becomes 'ready_for_pickup'.
      */
     public function autoMatch(Order $order): bool
     {
@@ -75,22 +86,26 @@ class OrderMatchingService
             return false;
         }
 
-        $rider = $this->matchRider($order);
-        if (!$rider) {
-            return false;
-        }
+        // NOTE: Rider assignment removed from auto-match
+        // Riders will accept orders manually when status is 'ready_for_pickup'
 
-        // Update order with matched vendor and rider
+        // Update order with matched vendor only (NO rider)
         $order->update([
             'vendor_id' => $vendor->id,
-            'rider_id' => $rider->id,
+            // 'rider_id' => $rider->id, // REMOVED - Rider not assigned here
             'status' => 'confirmed',
         ]);
 
         // Create tracking record
         $order->tracking()->create([
             'status' => 'confirmed',
-            'notes' => 'Order confirmed and assigned to vendor and rider',
+            'notes' => 'Order confirmed and assigned to vendor. Rider will be assigned when order is ready for pickup.',
+        ]);
+
+        \Log::info('Order auto-matched with vendor only', [
+            'order_id' => $order->id,
+            'vendor_id' => $vendor->id,
+            'status' => 'confirmed'
         ]);
 
         return true;

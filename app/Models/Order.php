@@ -115,4 +115,9 @@ class Order extends Model
         // Send notification
         event(new OrderStatusUpdated($this));
     }
+
+    public function adminCommission()
+    {
+        return $this->hasOne(AdminCommission::class);
+    }
 }
