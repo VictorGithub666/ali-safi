@@ -10,7 +10,7 @@
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-4">
-                    <input type="text" name="search" class="form-control" placeholder="Search vendors..." value="{{ request('search') }}">
+                    <input type="text" name="search" class="form-control" placeholder="Search Business Name..." value="{{ request('search') }}">
                 </div>
                 <div class="col-md-3">
                     <select name="status" class="form-select">

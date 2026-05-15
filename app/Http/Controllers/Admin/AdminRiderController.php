@@ -40,7 +40,13 @@ class AdminRiderController extends Controller
             }
         }
 
-        $riders = $query->withCount('orders')->paginate(15);
+         $riders = $query->withCount(['orders' => function($q) {
+                $q->where('status', 'delivered'); // Count only completed deliveries
+            }])
+            ->withSum(['orders as total_delivery_fee' => function($q) {
+                $q->where('status', 'delivered'); // Sum delivery fees only for completed deliveries
+            }], 'delivery_fee')
+            ->paginate(15);
 
         return view('admin.riders.index', compact('riders'));
     }
@@ -86,7 +92,15 @@ class AdminRiderController extends Controller
 
     public function show(Rider $rider)
     {
-        $rider->load('user', 'orders');
+        // Load with proper counts and sums
+        $rider->load('user');
+        $rider->loadCount(['orders' => function($q) {
+            $q->where('status', 'delivered');
+        }]);
+        $rider->loadSum(['orders' => function($q) {
+            $q->where('status', 'delivered');
+        }], 'delivery_fee');
+        
         return view('admin.riders.show', compact('rider'));
     }
 

@@ -28,6 +28,8 @@ class Rider extends Model
         'is_available' => 'boolean',
         'is_verified' => 'boolean',
         'last_location_update' => 'datetime',
+        'wallet_balance' => 'decimal:2',
+        'total_deliveries' => 'integer',
     ];
 
     public function user()
