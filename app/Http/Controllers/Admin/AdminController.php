@@ -101,7 +101,7 @@ class AdminController extends Controller
                         return $q->whereDate('created_at', '<=', $request->date_to);
                     })
                     ->latest()
-                    ->paginate(50);
+                    ->paginate(20);
         
         $vendors = Vendor::with('user')->get();
         $statuses = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'in_transit', 'delivered', 'cancelled'];
