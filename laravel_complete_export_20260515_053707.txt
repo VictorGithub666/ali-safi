@@ -6,7 +6,7 @@
  * 
  * Project: ali-safi
  * Path: /home/victor/Documents/Diamond Edge Tech/ali-safi
- * Date: 2026-05-15 05:19:09
+ * Date: 2026-05-15 05:37:06
  * 
  * This file contains ALL application files for DeepSeek analysis:
  * - Controllers, Models, Views, Migrations
@@ -35,7 +35,7 @@
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Admin/AdminController.php
-📏 Size: 9112 bytes
+📏 Size: 9487 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -67,6 +67,12 @@ class AdminController extends Controller
             'pending_orders' => Order::whereIn('status', ['pending', 'confirmed'])->count(),
             'in_transit_orders' => Order::where('status', 'in_transit')->count(),
         ];
+
+         // Extract individual variables for easier access in view
+        $totalOrders = $stats['total_orders'];
+        $activeRiders = $stats['active_riders'];
+        $totalRevenue = $stats['total_revenue'];
+        // ... add other variables you need
         
         // Get active vendors (verified + user is active)
         $activeVendors = Vendor::whereHas('user', function($q) {
@@ -105,7 +111,10 @@ class AdminController extends Controller
             'activeVendors',
             'completedOrders',
             'commissionRate',
-            'totalUsers'
+            'totalUsers',
+            'totalOrders',      // Add this
+            'activeRiders',     // Add this
+            'totalRevenue'  
         ));
     }
 
@@ -4974,7 +4983,7 @@ class ProfileController extends Controller
 
 ────────────────────────────────────────────────────────────────────────────────
 📄 File: app/Http/Controllers/Admin/AdminController.php
-📏 Size: 9112 bytes
+📏 Size: 9487 bytes
 ────────────────────────────────────────────────────────────────────────────────
 
 <?php
@@ -5006,6 +5015,12 @@ class AdminController extends Controller
             'pending_orders' => Order::whereIn('status', ['pending', 'confirmed'])->count(),
             'in_transit_orders' => Order::where('status', 'in_transit')->count(),
         ];
+
+         // Extract individual variables for easier access in view
+        $totalOrders = $stats['total_orders'];
+        $activeRiders = $stats['active_riders'];
+        $totalRevenue = $stats['total_revenue'];
+        // ... add other variables you need
         
         // Get active vendors (verified + user is active)
         $activeVendors = Vendor::whereHas('user', function($q) {
@@ -5044,7 +5059,10 @@ class AdminController extends Controller
             'activeVendors',
             'completedOrders',
             'commissionRate',
-            'totalUsers'
+            'totalUsers',
+            'totalOrders',      // Add this
+            'activeRiders',     // Add this
+            'totalRevenue'  
         ));
     }
 

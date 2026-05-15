@@ -84,13 +84,9 @@ class OrderController extends Controller
                 $order->update(['picked_up_at' => now()]);
             } elseif ($validated['status'] === 'delivered') {
                 $order->update(['delivered_at' => now()]);
-            } elseif ($validated['status'] === 'cancelled') {
-                $order->update(['cancelled_at' => now()]);
-            }
-
-            // Update vendor wallet when order is delivered
-            if ($validated['status'] === 'delivered' && $oldStatus !== 'delivered') {
-                $amountToAdd = $order->subtotal;
+                
+                // FIX: Update vendor wallet when order is delivered
+                $amountToAdd = $order->subtotal; // Add subtotal (excluding platform fee)
                 
                 $vendor->wallet_balance = $vendor->wallet_balance + $amountToAdd;
                 $vendor->total_orders = $vendor->total_orders + 1;
@@ -104,9 +100,11 @@ class OrderController extends Controller
                     'old_balance' => $vendor->getOriginal('wallet_balance'),
                     'new_balance' => $vendor->wallet_balance
                 ]);
+            } elseif ($validated['status'] === 'cancelled') {
+                $order->update(['cancelled_at' => now()]);
             }
 
-            // Create tracking record with location data
+            // Create tracking record
             $trackingData = [
                 'order_id' => $order->id,
                 'status' => $validated['status'],
@@ -115,13 +113,10 @@ class OrderController extends Controller
                 'updated_by_type' => 'vendor',
             ];
 
-            // Add rider location if a rider is assigned and has coordinates
             if ($order->rider && $order->rider->current_latitude && $order->rider->current_longitude) {
                 $trackingData['latitude'] = $order->rider->current_latitude;
                 $trackingData['longitude'] = $order->rider->current_longitude;
-            } 
-            // Add vendor location as fallback
-            elseif ($vendor->latitude && $vendor->longitude) {
+            } elseif ($vendor->latitude && $vendor->longitude) {
                 $trackingData['latitude'] = $vendor->latitude;
                 $trackingData['longitude'] = $vendor->longitude;
             }

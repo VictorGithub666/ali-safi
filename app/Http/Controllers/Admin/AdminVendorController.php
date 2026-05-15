@@ -35,7 +35,11 @@ class AdminVendorController extends Controller
             }
         }
 
-        $vendors = $query->withCount('orders')->paginate(15);
+         $vendors = $query->withCount('orders')
+                         ->withSum(['orders as total_revenue' => function($q) {
+                             $q->where('status', 'delivered');
+                         }], 'subtotal')
+                         ->paginate(15);
         return view('admin.vendors.index', compact('vendors'));
     }
 
