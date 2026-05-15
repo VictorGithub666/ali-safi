@@ -7,7 +7,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Models\Rider;
-use App\Models\Transaction;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -27,6 +27,26 @@ class AdminController extends Controller
             'pending_orders' => Order::whereIn('status', ['pending', 'confirmed'])->count(),
             'in_transit_orders' => Order::where('status', 'in_transit')->count(),
         ];
+
+         // Extract individual variables for easier access in view
+        $totalOrders = $stats['total_orders'];
+        $activeRiders = $stats['active_riders'];
+        $totalRevenue = $stats['total_revenue'];
+        // ... add other variables you need
+        
+        // Get active vendors (verified + user is active)
+        $activeVendors = Vendor::whereHas('user', function($q) {
+            $q->where('is_active', true);
+        })->where('is_verified', true)->count();
+        
+        // Get completed orders count
+        $completedOrders = Order::where('status', 'delivered')->count();
+        
+        // Get platform commission rate
+        $commissionRate = Setting::get('platform_fee_percentage', 5);
+        
+        // Get total users count
+        $totalUsers = User::count();
         
         $recentOrders = Order::with(['customer', 'vendor.user', 'rider.user'])
                             ->latest()
@@ -44,30 +64,49 @@ class AdminController extends Controller
                             ->take(30)
                             ->get();
         
-        return view('admin.dashboard', compact('stats', 'recentOrders', 'revenueChart'));
+        return view('admin.dashboard', compact(
+            'stats', 
+            'recentOrders', 
+            'revenueChart',
+            'activeVendors',
+            'completedOrders',
+            'commissionRate',
+            'totalUsers',
+            'totalOrders',      // Add this
+            'activeRiders',     // Add this
+            'totalRevenue'  
+        ));
     }
 
+    public function show(Order $order)
+    {
+        $order->load(['customer', 'vendor.user', 'rider.user', 'items.product', 'tracking']);
+        
+        return view('admin.orders.show', compact('order'));
+    }
+ 
     public function orders(Request $request)
     {
         $orders = Order::with(['customer', 'vendor.user', 'rider.user', 'items.product'])
-                      ->when($request->status, function($q) use ($request) {
-                          return $q->where('status', $request->status);
-                      })
-                      ->when($request->vendor, function($q) use ($request) {
-                          return $q->where('vendor_id', $request->vendor);
-                      })
-                      ->when($request->date_from, function($q) use ($request) {
-                          return $q->whereDate('created_at', '>=', $request->date_from);
-                      })
-                      ->when($request->date_to, function($q) use ($request) {
-                          return $q->whereDate('created_at', '<=', $request->date_to);
-                      })
-                      ->latest()
-                      ->paginate(50);
+                    ->when($request->status, function($q) use ($request) {
+                        return $q->where('status', $request->status);
+                    })
+                    ->when($request->vendor, function($q) use ($request) {
+                        return $q->where('vendor_id', $request->vendor);
+                    })
+                    ->when($request->date_from, function($q) use ($request) {
+                        return $q->whereDate('created_at', '>=', $request->date_from);
+                    })
+                    ->when($request->date_to, function($q) use ($request) {
+                        return $q->whereDate('created_at', '<=', $request->date_to);
+                    })
+                    ->latest()
+                    ->paginate(50);
         
         $vendors = Vendor::with('user')->get();
+        $statuses = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up', 'in_transit', 'delivered', 'cancelled'];
         
-        return view('admin.orders.index', compact('orders', 'vendors'));
+        return view('admin.orders.index', compact('orders', 'vendors', 'statuses'));
     }
 
     public function assignRider(Request $request, Order $order)

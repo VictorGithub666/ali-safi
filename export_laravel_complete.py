@@ -18,7 +18,7 @@ class LaravelCompleteCollector:
         self.file_count = 0
         self.skip_dirs = {
             'node_modules', 'vendor', 'storage', 'cache', 'bootstrap/cache',
-            '.git', '.idea', '.vscode', 'debugbar', 'sessions', 'views',
+            '.git', '.idea', '.vscode', 'debugbar', 'sessions',
             'framework', 'logs', 'pail'
         }
         
@@ -46,7 +46,31 @@ class LaravelCompleteCollector:
                 'description': 'All Eloquent models'
             },
             '📁 VIEWS (Blade Templates)': {
-                'paths': ['resources/views'],
+                'paths': [
+                    'resources/views',
+                    'resources/views/admin',
+                    'resources/views/admin/customers',
+                    'resources/views/admin/finances',
+                    'resources/views/admin/orders',
+                    'resources/views/admin/prices',
+                    'resources/views/admin/riders',
+                    'resources/views/admin/vendors',
+                    'resources/views/auth',
+                    'resources/views/auth/passwords',
+                    'resources/views/components',
+                    'resources/views/customer',
+                    'resources/views/customer/cart',
+                    'resources/views/customer/orders',
+                    'resources/views/customer/products',
+                    'resources/views/layouts',
+                    'resources/views/layouts/components',
+                    'resources/views/profile',
+                    'resources/views/rider',
+                    'resources/views/vendor',
+                    'resources/views/vendor/orders',
+                    'resources/views/vendor/products',
+                    'resources/views/vendor/profile'
+                ],
                 'patterns': ['*.blade.php', '*.php'],
                 'description': 'All Blade view templates'
             },

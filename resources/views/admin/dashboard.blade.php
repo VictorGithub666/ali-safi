@@ -83,16 +83,18 @@
                                     @foreach($recentOrders as $order)
                                         <tr>
                                             <td><strong>#{{ $order->order_number }}</strong></td>
-                                            <td>{{ $order->customer->name }}</td>
+                                            <td>{{ $order->customer->name ?? 'N/A' }}</td>
                                             <td>{{ $order->vendor->business_name ?? 'N/A' }}</td>
                                             <td>
-                                                <span class="badge badge-{{ $order->status === 'delivered' ? 'success' : 'warning' }}">
-                                                    {{ ucfirst($order->status) }}
+                                                <span class="badge bg-{{ $order->status === 'delivered' ? 'success' : ($order->status === 'cancelled' ? 'danger' : 'warning') }}">
+                                                    {{ ucfirst(str_replace('_', ' ', $order->status)) }}
                                                 </span>
                                             </td>
-                                            <td>KES {{ number_format($order->total_amount, 0) }}</td>
+                                            <td>KES {{ number_format($order->total, 0) }}</td>
                                             <td>
-                                                <a href="#" class="btn btn-sm btn-outline-primary">View</a>
+                                                <a href="{{ route('admin.orders.show', $order) }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-eye"></i> View
+                                                </a>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -116,10 +118,10 @@
                         <a href="{{ route('admin.orders') }}" class="btn btn-primary">
                             <i class="bi bi-box"></i> Manage Orders
                         </a>
-                        <a href="{{ route('admin.vendors') }}" class="btn btn-outline-primary">
+                        <a href="{{ route('admin.vendors.index') }}" class="btn btn-outline-primary">
                             <i class="bi bi-shop"></i> Manage Vendors
                         </a>
-                        <a href="{{ route('admin.riders') }}" class="btn btn-outline-primary">
+                        <a href="{{ route('admin.riders.index') }}" class="btn btn-outline-primary">
                             <i class="bi bi-truck"></i> Manage Riders
                         </a>
                     </div>
@@ -135,10 +137,16 @@
                         <strong>Total Users:</strong> {{ $totalUsers ?? 0 }}
                     </p>
                     <p class="mb-2">
+                        <strong>Total Orders:</strong> {{ $stats['total_orders'] ?? 0 }}
+                    </p>
+                    <p class="mb-2">
                         <strong>Completed Orders:</strong> {{ $completedOrders ?? 0 }}
                     </p>
                     <p class="mb-2">
-                        <strong>Pending Orders:</strong> {{ $pendingOrders ?? 0 }}
+                        <strong>Active Vendors:</strong> {{ $activeVendors ?? 0 }}
+                    </p>
+                    <p class="mb-2">
+                        <strong>Active Riders:</strong> {{ $stats['active_riders'] ?? 0 }}
                     </p>
                     <p class="mb-0">
                         <strong>Commission Rate:</strong> {{ $commissionRate ?? 5 }}%

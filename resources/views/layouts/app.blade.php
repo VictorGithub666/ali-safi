@@ -186,10 +186,49 @@
                                 </li>
                             @elseif(Auth::user()->user_type === 'admin')
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('admin.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+                                    <a class="nav-link" href="{{ route('admin.dashboard') }}">
+                                        <i class="bi bi-speedometer2"></i> Dashboard
+                                    </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('admin.orders') }}"><i class="bi bi-box"></i> Orders</a>
+                                    <a class="nav-link" href="{{ route('admin.orders') }}">  {{-- Fixed! --}}
+                                        <i class="bi bi-box"></i> Orders
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.vendors.index') }}">
+                                        <i class="bi bi-shop"></i> Vendors
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.riders.index') }}">
+                                        <i class="bi bi-bicycle"></i> Riders
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.customers.index') }}">
+                                        <i class="bi bi-people"></i> Customers
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.prices.index') }}">
+                                        <i class="bi bi-tag"></i> Pricing
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.finances.dashboard') }}">
+                                        <i class="bi bi-graph-up"></i> Finances
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.orders.assignment') }}">
+                                        <i class="bi bi-truck"></i> Assign Riders
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('admin.settings') }}">
+                                        <i class="bi bi-gear"></i> Settings
+                                    </a>
                                 </li>
                             @endif
                             

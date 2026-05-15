@@ -10,6 +10,12 @@ use App\Http\Controllers\Vendor\OrderController as VendorOrderController;
 use App\Http\Controllers\Vendor\ProductController as VendorProductController;
 use App\Http\Controllers\Rider\DeliveryController;
 use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\AdminCustomerController;
+use App\Http\Controllers\Admin\AdminVendorController;
+use App\Http\Controllers\Admin\AdminRiderController;
+use App\Http\Controllers\Admin\AdminPriceController;
+use App\Http\Controllers\Admin\AdminFinanceController;
+use App\Http\Controllers\Admin\AdminOrderAssignmentController;
 use App\Http\Controllers\Auth\SocialiteController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +26,8 @@ Route::get('/', function () {
 
 // Public vendor shop route
 Route::get('/shop/{vendor}', [ProductController::class, 'vendorShop'])->name('shop.vendor');
+
+
 
 // Authentication routes
 Route::middleware('guest')->group(function () {
@@ -109,29 +117,56 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Admin routes
     Route::middleware(['user.type:admin'])->prefix('admin')->name('admin.')->group(function () {
+        // Dashboard
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
-        
-        // Order management
+
+        // Orders Management
         Route::get('/orders', [AdminController::class, 'orders'])->name('orders');
-        Route::post('/orders/{order}/assign-rider', [AdminController::class, 'assignRider'])->name('orders.assign-rider');
-        Route::post('/orders/{order}/cancel', [AdminController::class, 'cancelOrder'])->name('orders.cancel');
+       
         
-        // Vendor management
-        Route::get('/vendors', [AdminController::class, 'vendors'])->name('vendors');
-        Route::post('/vendors/{vendor}/verify', [AdminController::class, 'verifyVendor'])->name('vendors.verify');
-        Route::post('/vendors/{vendor}/suspend', [AdminController::class, 'suspendVendor'])->name('vendors.suspend');
+        // Customer Management (full CRUD)
+        Route::resource('customers', AdminCustomerController::class);
+        Route::post('/customers/{customer}/suspend', [AdminCustomerController::class, 'suspend'])->name('customers.suspend');
+        Route::post('/customers/{customer}/activate', [AdminCustomerController::class, 'activate'])->name('customers.activate');
         
-        // Rider management
-        Route::get('/riders', [AdminController::class, 'riders'])->name('riders');
-        Route::post('/riders/{rider}/verify', [AdminController::class, 'verifyRider'])->name('riders.verify');
-        Route::post('/riders/{rider}/suspend', [AdminController::class, 'suspendRider'])->name('riders.suspend');
+        // Vendor Management (full CRUD)
+        Route::resource('vendors', AdminVendorController::class);
+        Route::post('/vendors/{vendor}/verify', [AdminVendorController::class, 'verify'])->name('vendors.verify');
+        Route::post('/vendors/{vendor}/suspend', [AdminVendorController::class, 'suspend'])->name('vendors.suspend');
+        Route::post('/vendors/{vendor}/activate', [AdminVendorController::class, 'activate'])->name('vendors.activate');
+
+        
+        // Rider Management (full CRUD)
+
+        
+        Route::resource('riders', AdminRiderController::class);
+        Route::post('/riders/{rider}/verify', [AdminRiderController::class, 'verify'])->name('riders.verify');
+        Route::post('/riders/{rider}/suspend', [AdminRiderController::class, 'suspend'])->name('riders.suspend');
+        Route::post('/riders/{rider}/activate', [AdminRiderController::class, 'activate'])->name('riders.activate');
+        
+        // Pricing Management
+        Route::resource('prices', AdminPriceController::class);
+        Route::post('/prices/bulk-update', [AdminPriceController::class, 'bulkUpdate'])->name('prices.bulk-update');
+        
+        // Financial Management
+        Route::get('/finances/dashboard', [AdminFinanceController::class, 'dashboard'])->name('finances.dashboard');
+        Route::get('/finances/margins', [AdminFinanceController::class, 'margins'])->name('finances.margins');
+        Route::get('/finances/reports', [AdminFinanceController::class, 'reports'])->name('finances.reports');
+        Route::get('/finances/reports/download', [AdminFinanceController::class, 'downloadReport'])->name('finances.download-report');
+        Route::get('/finances/vendor-settlement', [AdminFinanceController::class, 'vendorSettlement'])->name('finances.vendor-settlement');
+        
+        // Order Assignment (Rider Assignment)
+        Route::get('/orders/assignment', [AdminOrderAssignmentController::class, 'index'])->name('orders.assignment');
+        Route::get('/orders/select-rider', [AdminOrderAssignmentController::class, 'getAvailableRiders'])->name('orders.select-rider');
+        Route::post('/orders/assign', [AdminOrderAssignmentController::class, 'assign'])->name('orders.assign');
+        Route::post('/orders/batch-assign', [AdminOrderAssignmentController::class, 'batchAssign'])->name('orders.batch-assign');
+         Route::get('/orders/{order}', [AdminController::class, 'show'])->name('orders.show');
+        Route::post('/orders/{order}/reassign', [AdminOrderAssignmentController::class, 'reassign'])->name('orders.reassign');
+        Route::post('/orders/{order}/cancel-assignment', [AdminOrderAssignmentController::class, 'cancelAssignment'])->name('orders.cancel-assignment');
         
         // Settings
         Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
         Route::post('/settings', [AdminController::class, 'updateSettings'])->name('settings.update');
-        
-        // Reports
-        Route::get('/reports', [AdminController::class, 'reports'])->name('reports');
     });
 });
 
