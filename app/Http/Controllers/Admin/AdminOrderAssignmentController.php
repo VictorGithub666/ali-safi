@@ -225,11 +225,17 @@ class AdminOrderAssignmentController extends Controller
                 return back()->with('error', 'Rider not found');
             }
 
+            // Calculate total rider fee
+            $totalRiderFee = $validated['base_fee'] + 
+                            ($validated['distance_km'] * $validated['per_km_fee']) + 
+                            ($validated['bonus'] ?? 0);
+
             Log::info('Order and Rider found', [
                 'order_id' => $order->id,
                 'order_status' => $order->status,
                 'rider_id' => $rider->id,
-                'rider_name' => $rider->user->name ?? 'N/A'
+                'rider_name' => $rider->user->name ?? 'N/A',
+                'calculated_fee' => $totalRiderFee
             ]);
 
             // Create AdminRiderFee record
@@ -245,16 +251,18 @@ class AdminOrderAssignmentController extends Controller
 
             Log::info('AdminRiderFee created', ['admin_fee_id' => $adminFee->id]);
 
-            // Update order
+            // Update order - FIX: Update delivery_fee to the calculated rider fee
             $order->update([
                 'rider_id' => $rider->id,
-                'status' => 'picked_up'
+                'status' => 'picked_up',
+                'delivery_fee' => $totalRiderFee  // ← THIS IS THE FIX
             ]);
 
             Log::info('Order updated', [
                 'order_id' => $order->id,
                 'new_status' => 'picked_up',
-                'assigned_rider_id' => $rider->id
+                'assigned_rider_id' => $rider->id,
+                'delivery_fee_updated_to' => $totalRiderFee
             ]);
 
             // Create tracking record
@@ -267,7 +275,7 @@ class AdminOrderAssignmentController extends Controller
             Log::info('OrderTracking created', ['tracking_id' => $tracking->id]);
 
             return redirect()->route('admin.orders.assignment')
-                ->with('success', "Rider {$rider->user->name} assigned to Order #{$order->order_number} successfully");
+                ->with('success', "Rider {$rider->user->name} assigned to Order #{$order->order_number} successfully with delivery fee of KES " . number_format($totalRiderFee, 2));
                 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::warning('Validation failed in assign method', [
@@ -293,7 +301,7 @@ class AdminOrderAssignmentController extends Controller
     /**
      * Batch assign multiple orders to a single rider
      */
-    public function batchAssign(Request $request)
+   public function batchAssign(Request $request)
     {
         Log::info('=== AdminOrderAssignmentController@batchAssign START ===', [
             'timestamp' => now()->toDateTimeString(),
@@ -325,6 +333,11 @@ class AdminOrderAssignmentController extends Controller
                 return back()->with('error', 'Rider not found');
             }
 
+            // Calculate total rider fee for each order
+            $totalRiderFee = $validated['base_fee'] + 
+                            ($validated['distance_km'] * $validated['per_km_fee']) + 
+                            ($validated['bonus'] ?? 0);
+
             $assignedCount = 0;
             $failedOrders = [];
 
@@ -348,7 +361,12 @@ class AdminOrderAssignmentController extends Controller
                         'status' => 'pending'
                     ]);
 
-                    $order->update(['rider_id' => $rider->id, 'status' => 'picked_up']);
+                    // FIX: Update delivery_fee when batch assigning
+                    $order->update([
+                        'rider_id' => $rider->id, 
+                        'status' => 'picked_up',
+                        'delivery_fee' => $totalRiderFee  // ← ADD THIS LINE
+                    ]);
 
                     OrderTracking::create([
                         'order_id' => $order->id,
@@ -357,7 +375,7 @@ class AdminOrderAssignmentController extends Controller
                     ]);
 
                     $assignedCount++;
-                    Log::info('Order assigned in batch', ['order_id' => $order_id]);
+                    Log::info('Order assigned in batch', ['order_id' => $order_id, 'delivery_fee' => $totalRiderFee]);
                     
                 } catch (\Exception $e) {
                     Log::error('Failed to assign order in batch', [
@@ -368,7 +386,7 @@ class AdminOrderAssignmentController extends Controller
                 }
             }
 
-            $message = "{$assignedCount} orders assigned to rider {$rider->user->name} successfully";
+            $message = "{$assignedCount} orders assigned to rider {$rider->user->name} successfully with delivery fee of KES " . number_format($totalRiderFee, 2);
             if (!empty($failedOrders)) {
                 $message .= ". Failed orders: " . implode(', ', $failedOrders);
             }
@@ -416,10 +434,16 @@ class AdminOrderAssignmentController extends Controller
             $oldRiderId = $order->rider_id;
             $rider = Rider::with('user')->find($validated['rider_id']);
 
+            // Calculate new rider fee
+            $newRiderFee = $validated['base_fee'] + 
+                        ($validated['distance_km'] * $validated['per_km_fee']) + 
+                        ($validated['bonus'] ?? 0);
+
             Log::info('Reassign details', [
                 'old_rider_id' => $oldRiderId,
                 'new_rider_id' => $rider->id,
-                'new_rider_name' => $rider->user->name ?? 'N/A'
+                'new_rider_name' => $rider->user->name ?? 'N/A',
+                'new_delivery_fee' => $newRiderFee
             ]);
 
             // Delete old fee records
@@ -439,24 +463,28 @@ class AdminOrderAssignmentController extends Controller
 
             Log::info('New AdminRiderFee created', ['admin_fee_id' => $adminFee->id]);
 
-            // Update order
-            $order->update(['rider_id' => $rider->id]);
+            // Update order - FIX: Update delivery_fee when reassigning
+            $order->update([
+                'rider_id' => $rider->id,
+                'delivery_fee' => $newRiderFee  // ← ADD THIS LINE
+            ]);
 
             // Create tracking record
             $tracking = OrderTracking::create([
                 'order_id' => $order->id,
                 'status' => 'picked_up',
-                'notes' => 'Reassigned from rider ID: ' . ($oldRiderId ?? 'none') . ' to: ' . ($rider->user->name ?? 'Rider #' . $rider->id)
+                'notes' => 'Reassigned from rider ID: ' . ($oldRiderId ?? 'none') . ' to: ' . ($rider->user->name ?? 'Rider #' . $rider->id) . ' with new delivery fee of KES ' . number_format($newRiderFee, 2)
             ]);
 
             Log::info('Order reassigned successfully', [
                 'order_id' => $order->id,
                 'old_rider_id' => $oldRiderId,
                 'new_rider_id' => $rider->id,
-                'tracking_id' => $tracking->id
+                'tracking_id' => $tracking->id,
+                'delivery_fee_updated' => $newRiderFee
             ]);
 
-            return back()->with('success', "Order #{$order->order_number} reassigned to {$rider->user->name} successfully");
+            return back()->with('success', "Order #{$order->order_number} reassigned to {$rider->user->name} with delivery fee of KES " . number_format($newRiderFee, 2));
             
         } catch (\Exception $e) {
             Log::error('CRITICAL ERROR in reassign', [

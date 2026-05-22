@@ -263,9 +263,9 @@
 
         <!-- Pagination -->
         @if($orders->hasPages())
-            <div class="d-flex justify-content-center mt-5">
-                {{ $orders->links() }}
-            </div>
+           <div class="d-flex justify-content-center mt-4">
+                        {{ $orders->links('pagination::bootstrap-5') }}
+                    </div>
         @endif
     @endif
 </div>

@@ -53,7 +53,7 @@
                     <div class="card-body">
                         <div class="mb-3">
                             <label class="form-label">Distance (km)</label>
-                            <input type="number" id="distance_km" class="form-control" step="0.1" value="0" placeholder="Distance in km">
+                            <input type="number" id="distance_km" class="form-control" step="0.1" value="1" placeholder="Distance in km">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Base Fee (KES)</label>
@@ -61,14 +61,14 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Per KM Fee (KES/km)</label>
-                            <input type="number" id="per_km_fee" class="form-control" step="1" value="10" placeholder="Per KM fee">
+                            <input type="number" id="per_km_fee" class="form-control" step="1" value="50" placeholder="Per KM fee">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Bonus (optional)</label>
                             <input type="number" id="bonus" class="form-control" step="0.01" value="0" placeholder="Bonus amount">
                         </div>
                         <div class="alert alert-info">
-                            <strong>Total Rider Fee:</strong> <span id="totalFee">KES 50.00</span>
+                            <strong>Total Rider Fee:</strong> <span id="totalFee">KES 100.00</span>
                         </div>
                         <div class="alert alert-warning mt-3">
                             <small>
@@ -115,8 +115,7 @@
                                         <td>
                                             @if($rider->current_latitude && $rider->current_longitude && $order->vendor->latitude && $order->vendor->longitude)
                                                 @php
-                                                    use App\Services\DistanceService;
-                                                    $distanceToVendor = DistanceService::calculateDistance(
+                                                    $distanceToVendor = \App\Services\DistanceService::calculateDistance(
                                                         $rider->current_latitude,
                                                         $rider->current_longitude,
                                                         $order->vendor->latitude,
@@ -198,17 +197,8 @@
 
     // Assign rider function with SweetAlert confirmation
     function assignRider(riderId, riderName) {
-        // Validate distance
+        // Get distance for display (can be 0)
         const distance = parseFloat(distanceInput.value) || 0;
-        if (distance <= 0) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Distance Required',
-                text: 'Please enter the distance in kilometers before assigning a rider.',
-                confirmButtonColor: '#05bb14'
-            });
-            return;
-        }
         
         // Confirm assignment
         Swal.fire({
