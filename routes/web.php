@@ -156,6 +156,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/finances/reports/download', [AdminFinanceController::class, 'downloadReport'])->name('finances.download-report');
         Route::get('/finances/vendor-settlement', [AdminFinanceController::class, 'vendorSettlement'])->name('finances.vendor-settlement');
         Route::get('/finances/sync', [AdminFinanceController::class, 'syncOrders'])->name('finances.sync');
+        Route::get('/finances/download-simple-report', [AdminFinanceController::class, 'downloadSimpleReport'])->name('finances.download-simple-report');
         
         // Order Assignment (Rider Assignment)
         Route::get('/orders/assignment', [AdminOrderAssignmentController::class, 'index'])->name('orders.assignment');

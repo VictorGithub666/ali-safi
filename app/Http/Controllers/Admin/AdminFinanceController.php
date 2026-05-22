@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Admin/AdminFinanceController.php
 
 namespace App\Http\Controllers\Admin;
 
@@ -21,6 +22,9 @@ class AdminFinanceController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
 
         // Use only settled commissions for accurate totals
         $settledQuery = clone $query;
@@ -31,11 +35,10 @@ class AdminFinanceController extends Controller
         $profitMargin = $totalOrders > 0 ? ($totalProfit / $totalOrders) * 100 : 0;
         $orderCount = $settledQuery->count();
 
-        $platformCommission = $settledQuery->sum('platform_commission');
-        $deliveryFees = $settledQuery->sum('delivery_fee');
-        $riderFees = $settledQuery->sum('rider_fee');
+        // Get delivery fees total
+        $totalDeliveryFees = $settledQuery->sum('delivery_fee');
 
-        // Get all transactions for the table (including pending for visibility)
+        // Get all transactions for the table
         $transactions = $query->with('vendor', 'order')->latest()->paginate(20);
 
         // Get summary by status
@@ -44,12 +47,63 @@ class AdminFinanceController extends Controller
         $cancelledCount = AdminCommission::where('status', 'cancelled')->count();
 
         return view('admin.finances.dashboard', compact(
-            'totalOrders', 'totalProfit', 'profitMargin', 'orderCount',
-            'platformCommission', 'deliveryFees', 'riderFees', 'transactions',
+            'totalOrders', 'totalProfit', 'profitMargin', 'orderCount', 'totalDeliveryFees',
+            'transactions',
             'pendingCount', 'settledCount', 'cancelledCount'
         ));
     }
 
+    /**
+     * Download Simple Report (PDF)
+     * Shows: Report Date, Total Orders, Total Profit, Total Delivery Fees, Transactions
+     */
+    public function downloadSimpleReport(Request $request)
+    {
+        $query = AdminCommission::query();
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->get('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->get('date_to'));
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->get('status'));
+        }
+
+        $transactions = $query->with('vendor', 'order')->get();
+
+        // Calculate totals
+        $settledQuery = clone $query;
+        $settledQuery->where('status', 'settled');
+        
+        $totalOrdersValue = $settledQuery->sum('order_subtotal');
+        $totalProfit = $settledQuery->sum('admin_profit');
+        $totalDeliveryFees = $settledQuery->sum('delivery_fee');
+        $transactionCount = $transactions->count();
+
+        // Date range for report
+        $dateFrom = $request->get('date_from', 'All time');
+        $dateTo = $request->get('date_to', 'All time');
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.finances.simple-pdf-report', [
+            'transactions' => $transactions,
+            'total_orders_value' => $totalOrdersValue,
+            'total_profit' => $totalProfit,
+            'total_delivery_fees' => $totalDeliveryFees,
+            'transaction_count' => $transactionCount,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'generated_at' => now(),
+            'status_filter' => $request->get('status', 'All')
+        ]);
+
+        $filename = 'finance_report_' . now()->format('Y-m-d_H-i-s') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    // Keep existing methods...
+    
     public function margins(Request $request)
     {
         $query = AdminCommission::query();
@@ -61,7 +115,6 @@ class AdminFinanceController extends Controller
             $query->whereDate('created_at', '<=', $request->get('date_to'));
         }
 
-        // Only settled commissions
         $settledQuery = clone $query;
         $settledQuery->where('status', 'settled');
 
@@ -122,7 +175,6 @@ class AdminFinanceController extends Controller
         $transactions = $query->latest()->paginate(15);
         $vendors = Vendor::pluck('business_name', 'id');
         
-        // Store query parameters for download
         $filters = [
             'vendor_id' => $request->get('vendor_id'),
             'status' => $request->get('status'),
@@ -167,11 +219,11 @@ class AdminFinanceController extends Controller
             return $this->downloadPDFReport($transactions, $request);
         }
 
-        // CSV Download
+        // CSV Download with Delivery Fee column
         $filename = 'admin_report_' . now()->format('Y-m-d_H-i-s') . '.csv';
         $handle = fopen('php://temp/maxmemory:5000000', 'r+');
 
-        fputcsv($handle, ['Date', 'Order ID', 'Order #', 'Vendor', 'Order Total', 'Platform Commission', 'Delivery Fee', 'Rider Fee', 'Admin Profit', 'Status']);
+        fputcsv($handle, ['Date', 'Order ID', 'Order #', 'Vendor', 'Order Total', 'Delivery Fee', 'Admin Profit', 'Status']);
 
         foreach ($transactions as $trans) {
             fputcsv($handle, [
@@ -180,9 +232,7 @@ class AdminFinanceController extends Controller
                 $trans->order->order_number ?? 'N/A',
                 $trans->vendor->business_name ?? 'N/A',
                 number_format($trans->order_subtotal, 2),
-                number_format($trans->platform_commission, 2),
                 number_format($trans->delivery_fee, 2),
-                number_format($trans->rider_fee, 2),
                 number_format($trans->admin_profit, 2),
                 ucfirst($trans->status)
             ]);
@@ -199,7 +249,7 @@ class AdminFinanceController extends Controller
     }
 
     /**
-     * Download PDF report
+     * Download PDF Report (Legacy - keep for backwards compatibility)
      */
     protected function downloadPDFReport($transactions, $request)
     {
@@ -215,6 +265,7 @@ class AdminFinanceController extends Controller
             'generated_at' => now(),
             'total_profit' => $transactions->sum('admin_profit'),
             'total_orders_value' => $transactions->sum('order_subtotal'),
+            'total_delivery_fees' => $transactions->sum('delivery_fee'),
         ]);
 
         $filename = 'admin_report_' . now()->format('Y-m-d_H-i-s') . '.pdf';
@@ -286,8 +337,8 @@ class AdminFinanceController extends Controller
                     'rider_fee' => $riderFee,
                     'admin_profit' => $adminProfit,
                     'status' => $status,
-                    'created_at' => $order->created_at, // ADD THIS - preserve original date
-                    'updated_at' => $order->updated_at, // ADD THIS - preserve original date
+                    'created_at' => $order->created_at,
+                    'updated_at' => $order->updated_at,
                 ]);
                 
                 $synced++;
