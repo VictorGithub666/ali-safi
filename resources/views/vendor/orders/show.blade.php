@@ -78,9 +78,9 @@
                                     <td>
                                         <strong>{{ $item->product->name }}</strong>
                                     </td>
-                                    <td>KES {{ number_format($item->price, 2) }}</td>
+                                    <td>KES {{ number_format($item->product->base_price, 2) }}</td>
                                     <td>{{ $item->quantity }}</td>
-                                    <td><strong>KES {{ number_format($item->price * $item->quantity, 2) }}</strong></td>
+                                    <td><strong>KES {{ number_format($item->product->base_price * $item->quantity, 2) }}</strong></td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -90,18 +90,19 @@
                     <div class="row">
                         <div class="col-md-6"></div>
                         <div class="col-md-6">
+                            @php
+                                $baseSubtotal = $order->items->sum(function($item) {
+                                    return $item->product->base_price * $item->quantity;
+                                });
+                            @endphp
                             <div class="mb-2 d-flex justify-content-between">
-                                <span>Subtotal:</span>
-                                <strong>KES {{ number_format($order->subtotal, 2) }}</strong>
-                            </div>
-                            <div class="mb-2 d-flex justify-content-between">
-                                <span>Delivery Fee:</span>
-                                <strong>KES {{ number_format($order->delivery_fee ?? 0, 2) }}</strong>
+                                <span>Subtotal (Base Price):</span>
+                                <strong>KES {{ number_format($baseSubtotal, 2) }}</strong>
                             </div>
                             <hr>
                             <div class="d-flex justify-content-between">
                                 <span class="fw-bold">Total:</span>
-                                <strong class="fs-5 text-success">KES {{ number_format($order->total_amount ?? ($order->subtotal + ($order->delivery_fee ?? 0)), 2) }}</strong>
+                                <strong class="fs-5 text-success">KES {{ number_format($baseSubtotal, 2) }}</strong>
                             </div>
                         </div>
                     </div>

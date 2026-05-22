@@ -81,6 +81,11 @@
                                 </thead>
                                 <tbody>
                                     @foreach($recentOrders as $order)
+                                        @php
+                                            $baseTotal = $order->items->sum(function($item) {
+                                                return $item->product->base_price * $item->quantity;
+                                            });
+                                        @endphp
                                         <tr>
                                             <td><strong>#{{ $order->order_number }}</strong></td>
                                             <td>{{ $order->customer->name }}</td>
@@ -90,7 +95,7 @@
                                                     {{ ucfirst($order->status) }}
                                                 </span>
                                             </td>
-                                            <td>KES {{ number_format($order->total ?? $order->subtotal, 0) }}</td>
+                                            <td>KES {{ number_format($baseTotal, 0) }}</td>
                                             <td>
                                                 <a href="{{ route('vendor.orders.show', $order->id) }}" class="btn btn-primary btn-sm">
                                                     <i class="bi bi-eye"></i>

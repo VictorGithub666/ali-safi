@@ -270,10 +270,6 @@
                     <td class="text-right">KES {{ number_format($order->subtotal, 2) }}</td>
                 </tr>
                 <tr>
-                    <td>Platform Fee (5%)</td>
-                    <td class="text-right">KES {{ number_format($order->platform_fee, 2) }}</td>
-                </tr>
-                <tr>
                     <td>Delivery Fee</td>
                     <td class="text-right">KES {{ number_format($order->delivery_fee, 2) }}</td>
                 </tr>

@@ -76,7 +76,12 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <strong>KES {{ number_format($order->total_amount ?? $order->subtotal, 2) }}</strong>
+                                    @php
+                                        $baseTotal = $order->items->sum(function($item) {
+                                            return $item->product->base_price * $item->quantity;
+                                        });
+                                    @endphp
+                                    <strong>KES {{ number_format($baseTotal, 2) }}</strong>
                                 </td>
                                 <td>
                                     <span class="badge badge-{{ 
@@ -114,9 +119,9 @@
         </div>
 
         <!-- Pagination -->
-        <div class="d-flex justify-content-center mt-4">
-            {{ $orders->links() }}
-        </div>
+       <div class="d-flex justify-content-center mt-4">
+                        {{ $orders->links('pagination::bootstrap-5') }}
+                    </div>
     @else
         <div class="alert alert-info" role="alert">
             <i class="bi bi-info-circle me-2"></i>

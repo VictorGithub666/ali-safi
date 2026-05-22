@@ -259,6 +259,11 @@
                     </thead>
                     <tbody>
                         @foreach($recentDeliveredOrders as $deliveredOrder)
+                            @php
+                                $baseOrderTotal = $deliveredOrder->items->sum(function($item) {
+                                    return $item->product->base_price * $item->quantity;
+                                });
+                            @endphp
                             <tr>
                                 <td>
                                     <a href="{{ route('vendor.orders.show', $deliveredOrder) }}">
@@ -268,7 +273,7 @@
                                 <td>{{ $deliveredOrder->customer->name ?? 'N/A' }}</td>
                                 <td>{{ $deliveredOrder->delivered_at ? $deliveredOrder->delivered_at->format('M d, Y') : $deliveredOrder->created_at->format('M d, Y') }}</td>
                                 <td class="text-end text-success">
-                                    KES {{ number_format($deliveredOrder->subtotal, 2) }}
+                                    KES {{ number_format($baseOrderTotal, 2) }}
                                 </td>
                             </tr>
                         @endforeach

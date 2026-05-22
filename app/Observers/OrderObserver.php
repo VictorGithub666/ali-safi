@@ -41,7 +41,6 @@ class OrderObserver
             return;
         }
 
-        $commissionPercentage = Setting::get('platform_fee_percentage', 5);
         
         // Calculate platform commission from subtotal
         $platformCommission = $order->subtotal * ($commissionPercentage / 100);

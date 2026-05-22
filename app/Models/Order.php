@@ -22,7 +22,6 @@ class Order extends Model
         'delivery_longitude',
         'subtotal',
         'delivery_fee',
-        'platform_fee',
         'total',
         'status',
         'payment_status',
@@ -49,7 +48,6 @@ class Order extends Model
         'delivery_longitude' => 'decimal:16',
         'subtotal' => 'decimal:2',
         'delivery_fee' => 'decimal:2',
-        'platform_fee' => 'decimal:2',
         'total' => 'decimal:2',
     ];
 

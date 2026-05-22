@@ -160,11 +160,10 @@ class OrderController extends Controller
                 
                 \Illuminate\Support\Facades\Log::info('Calculating delivery fee', ['vendor_id' => $vendorId, 'lat' => $request->delivery_latitude, 'lng' => $request->delivery_longitude]);
                 $deliveryFee = $this->calculateDeliveryFee($vendor, $request->delivery_latitude, $request->delivery_longitude);
-                $platformFee = $subtotal * 0.05; // 5% platform fee
-                $total = $subtotal + $deliveryFee + $platformFee;
+                $platformFee = 0; // No platform fee
+                $total = $subtotal + $deliveryFee;
 
-                \Illuminate\Support\Facades\Log::info('Order totals calculated', ['subtotal' => $subtotal, 'delivery_fee' => $deliveryFee, 'platform_fee' => $platformFee, 'total' => $total]);
-
+            
                 // Create order (NO RIDER ASSIGNMENT YET)
                 \Illuminate\Support\Facades\Log::info('Creating order', ['customer_id' => Auth::id(), 'vendor_id' => $vendorId]);
                 $order = Order::create([
@@ -512,35 +511,8 @@ class OrderController extends Controller
 
     protected function calculateDeliveryFee($vendor, $customerLat, $customerLng)
     {
-        // Check if vendor has coordinates
-        if (!$vendor->latitude || !$vendor->longitude) {
-            \Log::warning('Vendor missing coordinates for delivery fee calculation', [
-                'vendor_id' => $vendor->id,
-                'business_name' => $vendor->business_name
-            ]);
-            return 100; // Default delivery fee
-        }
-        
-        $distance = $this->calculateDistance(
-            $vendor->latitude,
-            $vendor->longitude,
-            $customerLat,
-            $customerLng
-        );
-        
-        // Base fee + per km charge
-        $baseFee = 50;
-        $perKmRate = 20;
-        
-        $deliveryFee = $baseFee + ($distance * $perKmRate);
-        
-        \Log::info('Delivery fee calculated', [
-            'vendor_id' => $vendor->id,
-            'distance_km' => round($distance, 2),
-            'delivery_fee' => round($deliveryFee, 2)
-        ]);
-        
-        return round($deliveryFee);
+        // No delivery fee - return 0
+        return 0;
     }
 
     protected function calculateDistance($lat1, $lon1, $lat2, $lon2)

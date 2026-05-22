@@ -280,10 +280,6 @@
                                 <span class="text-muted">Delivery Fee</span>
                                 <span style="color: var(--primary-green);" class="fw-bold">FREE</span>
                             </div>
-                            <div class="d-flex justify-content-between mb-2">
-                                <span class="text-muted">Platform Fee (5%)</span>
-                                <span>KES {{ number_format($total * 0.05, 0) }}</span>
-                            </div>
                         </div>
 
                         <hr>
@@ -291,7 +287,7 @@
                         <!-- Total -->
                         <div class="d-flex justify-content-between mb-4">
                             <h6 class="fw-bold mb-0">Total Amount</h6>
-                            <h5 class="fw-bold mb-0" style="color: var(--primary-green);">KES {{ number_format($total * 1.05, 0) }}</h5>
+                            <h5 class="fw-bold mb-0" style="color: var(--primary-green);">KES {{ number_format($total, 0) }}</h5>
                         </div>
 
                         <!-- Info Alert -->
