@@ -195,9 +195,6 @@
                         <button type="button" class="btn btn-primary" onclick="window.print()">
                             <i class="bi bi-printer"></i> Print Order
                         </button>
-                        <a href="{{ route('customer.orders.invoice', $order) }}" class="btn btn-secondary" target="_blank">
-                            <i class="bi bi-download"></i> Download Invoice
-                        </a>
                     </div>
                 </div>
             </div>

@@ -126,7 +126,22 @@
                                     <input type="number" class="form-control text-center" id="quantity" name="quantity" value="1" min="1" max="{{ $product->stock_quantity }}">
                                     <button class="btn btn-outline-secondary" type="button" id="increaseQty">+</button>
                                 </div>
-                                <p class="small text-muted mt-2 mb-0">{{ $product->stock_quantity }} units available</p>
+                                @if($product->stock_quantity <= 0)
+                                    <div class="alert alert-danger mt-2 py-2">
+                                        <i class="bi bi-exclamation-triangle me-2"></i>
+                                        <strong>Out of Stock!</strong> This product is currently unavailable.
+                                    </div>
+                                    <button class="btn btn-secondary w-100" disabled style="background-color: #6c757d;">
+                                        <i class="bi bi-bag-plus me-2"></i> Out of Stock
+                                    </button>
+                                @else
+                                    <p class="small text-muted mt-2 mb-0">{{ $product->stock_quantity }} units available</p>
+                                    @if($product->stock_quantity < 10)
+                                        <p class="small text-warning mt-1 mb-0">
+                                            <i class="bi bi-exclamation-triangle"></i> Only {{ $product->stock_quantity }} left! Order soon.
+                                        </p>
+                                    @endif
+                                @endif
                             </div>
 
                             <!-- Total Price -->

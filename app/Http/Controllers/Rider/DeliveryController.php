@@ -360,6 +360,39 @@ class DeliveryController extends Controller
                 $order->vendor->increment('wallet_balance', $order->subtotal);
             }
             
+            // ========================================
+            // FIX: Reduce product stock when rider marks as delivered
+            // ========================================
+            $vendor = $order->vendor;
+            foreach ($order->items as $item) {
+                // Get the vendor_product pivot record
+                $vendorProduct = $vendor->products()
+                    ->where('product_id', $item->product_id)
+                    ->first();
+                
+                if ($vendorProduct) {
+                    $currentStock = $vendorProduct->pivot->stock_quantity;
+                    $newStock = max(0, $currentStock - $item->quantity);
+                    
+                    $vendor->products()->updateExistingPivot($item->product_id, [
+                        'stock_quantity' => $newStock,
+                        // If stock becomes 0, mark as unavailable
+                        'is_available' => $newStock > 0 ? $vendorProduct->pivot->is_available : false,
+                    ]);
+                    
+                    Log::info('Product stock updated after delivery (by rider)', [
+                        'order_id' => $order->id,
+                        'product_id' => $item->product_id,
+                        'old_stock' => $currentStock,
+                        'quantity_sold' => $item->quantity,
+                        'new_stock' => $newStock,
+                    ]);
+                }
+            }
+            
+            // Update vendor total orders count
+            $vendor->increment('total_orders');
+            
             // Always increment rider wallet with delivery fee
             $rider->increment('wallet_balance', $order->delivery_fee);
             $rider->increment('total_deliveries');

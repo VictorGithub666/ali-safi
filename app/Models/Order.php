@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Events\OrderStatusUpdated;
 
 class Order extends Model
 {
@@ -110,7 +111,7 @@ class Order extends Model
             $this->update([$timestampField => now()]);
         }
 
-        // Send notification
+        // Dispatch event
         event(new OrderStatusUpdated($this));
     }
 

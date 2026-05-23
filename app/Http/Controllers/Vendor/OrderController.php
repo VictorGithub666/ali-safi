@@ -85,9 +85,37 @@ class OrderController extends Controller
             } elseif ($validated['status'] === 'delivered') {
                 $order->update(['delivered_at' => now()]);
                 
-                // FIX: Update vendor wallet when order is delivered
-                $amountToAdd = $order->subtotal; // Add subtotal (excluding platform fee)
+                // ========================================
+                // FIX 1: Reduce product stock
+                // ========================================
+                foreach ($order->items as $item) {
+                    // Get the vendor_product pivot record
+                    $vendorProduct = $vendor->products()
+                        ->where('product_id', $item->product_id)
+                        ->first();
+                    
+                    if ($vendorProduct) {
+                        $currentStock = $vendorProduct->pivot->stock_quantity;
+                        $newStock = max(0, $currentStock - $item->quantity);
+                        
+                        $vendor->products()->updateExistingPivot($item->product_id, [
+                            'stock_quantity' => $newStock,
+                            // If stock becomes 0, mark as unavailable
+                            'is_available' => $newStock > 0 ? $vendorProduct->pivot->is_available : false,
+                        ]);
+                        
+                        \Log::info('Product stock updated after delivery', [
+                            'order_id' => $order->id,
+                            'product_id' => $item->product_id,
+                            'old_stock' => $currentStock,
+                            'quantity_sold' => $item->quantity,
+                            'new_stock' => $newStock,
+                        ]);
+                    }
+                }
                 
+                // Update vendor wallet (existing code)
+                $amountToAdd = $order->subtotal;
                 $vendor->wallet_balance = $vendor->wallet_balance + $amountToAdd;
                 $vendor->total_orders = $vendor->total_orders + 1;
                 $vendor->save();
@@ -104,7 +132,7 @@ class OrderController extends Controller
                 $order->update(['cancelled_at' => now()]);
             }
 
-            // Create tracking record
+            // Create tracking record (existing code)
             $trackingData = [
                 'order_id' => $order->id,
                 'status' => $validated['status'],

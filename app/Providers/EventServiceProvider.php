@@ -3,6 +3,8 @@ namespace App\Providers;
 
 use App\Models\Order;
 use App\Observers\OrderObserver;
+use App\Events\OrderStatusUpdated;
+use App\Listeners\DeductProductStockOnDelivery;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -18,6 +20,9 @@ class EventServiceProvider extends ServiceProvider
         Registered::class => [
             SendEmailVerificationNotification::class,
         ],
+        OrderStatusUpdated::class => [
+        DeductProductStockOnDelivery::class,
+    ],
     ];
 
     /**

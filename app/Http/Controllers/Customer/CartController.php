@@ -26,7 +26,7 @@ class CartController extends Controller
         ]);
     }
 
-    public function add(Request $request)
+     public function add(Request $request)
     {
         $validated = $request->validate([
             'product_id' => ['required', 'exists:products,id'],
@@ -53,16 +53,23 @@ class CartController extends Controller
         // Check if vendor has this product and it's available
         $vendorProduct = $vendor->products()
             ->where('product_id', $validated['product_id'])
-            ->where('is_available', true)
-            ->first();
+            ->first();  // Removed 'is_available' condition to check stock properly
             
         if (!$vendorProduct) {
             return redirect()->back()->with('error', 'This product is not available from this vendor.');
         }
 
-        // Check stock
-        if ($vendorProduct->pivot->stock_quantity < $validated['quantity']) {
-            return redirect()->back()->with('error', 'Insufficient stock available.');
+        // ========================================
+        // FIX 2: Check stock BEFORE adding to cart
+        // ========================================
+        $stockQuantity = $vendorProduct->pivot->stock_quantity;
+        
+        if ($stockQuantity <= 0) {
+            return redirect()->back()->with('error', 'This product is currently out of stock. Please check back later.');
+        }
+        
+        if ($stockQuantity < $validated['quantity']) {
+            return redirect()->back()->with('error', 'Only ' . $stockQuantity . ' units available in stock. Please reduce quantity.');
         }
 
         // Get customer price from admin pricing
@@ -76,6 +83,11 @@ class CartController extends Controller
             ->first();
 
         if ($existingCartItem) {
+            // Check if new total quantity would exceed stock
+            $newTotalQuantity = $existingCartItem->quantity + $validated['quantity'];
+            if ($newTotalQuantity > $stockQuantity) {
+                return redirect()->back()->with('error', 'Cannot add more than ' . $stockQuantity . ' units (only ' . ($stockQuantity - $existingCartItem->quantity) . ' more available).');
+            }
             $existingCartItem->increment('quantity', $validated['quantity']);
             $message = 'Product quantity updated in cart';
         } else {
