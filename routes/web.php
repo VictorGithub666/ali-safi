@@ -193,3 +193,8 @@ Route::post('/mpesa/callback', [\App\Http\Controllers\PaymentController::class, 
 Route::prefix('api/v1')->middleware('auth:sanctum')->group(function () {
     // API endpoints for mobile apps
 });
+
+// Offline fallback page (must be last route)
+Route::get('/offline', function () {
+    return view('offline');
+})->name('offline');

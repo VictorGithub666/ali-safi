@@ -10,6 +10,13 @@
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=poppins:400,500,600,700&display=swap" rel="stylesheet" />
+        <link rel="manifest" href="{{ asset('manifest.json') }}">
+        <meta name="theme-color" content="#05bb14">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta name="apple-mobile-web-app-title" content="Ali-Safi">
+        <link rel="apple-touch-icon" href="{{ asset('icons/icon-192x192.png') }}">
 
         <!-- Bootstrap CSS -->
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -354,5 +361,103 @@
                 });
             });
         </script>
+
+        <script>
+                if ('serviceWorker' in navigator) {
+                    window.addEventListener('load', function() {
+                        navigator.serviceWorker.register('/sw.js').then(function(registration) {
+                            console.log('Service Worker registered with scope:', registration.scope);
+                            
+                            // Check for updates
+                            registration.addEventListener('updatefound', () => {
+                                const newWorker = registration.installing;
+                                console.log('New service worker found:', newWorker);
+                                
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        // New update available
+                                        showUpdateNotification();
+                                    }
+                                });
+                            });
+                        }).catch(function(error) {
+                            console.log('Service Worker registration failed:', error);
+                        });
+                    });
+                }
+
+                function showUpdateNotification() {
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-info alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
+                    toast.style.zIndex = '9999';
+                    toast.style.minWidth = '280px';
+                    toast.innerHTML = `
+                        <i class="bi bi-arrow-repeat me-2"></i>
+                        <strong>Update Available!</strong>
+                        <p class="mb-2 small">A new version is available. Refresh to update.</p>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="location.reload()">Refresh</button>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(toast);
+                }
+
+                // Push notification subscription
+                async function subscribeToPushNotifications() {
+                    if (!('PushManager' in window)) {
+                        console.log('Push notifications not supported');
+                        return;
+                    }
+                    
+                    try {
+                        const registration = await navigator.serviceWorker.ready;
+                        const subscription = await registration.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: urlBase64ToUint8Array('{{ env('VAPID_PUBLIC_KEY', '') }}')
+                        });
+                        
+                        // Send subscription to server
+                        await fetch('/api/push-subscribe', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
+                            },
+                            body: JSON.stringify(subscription)
+                        });
+                        
+                        console.log('Push notification subscription successful');
+                    } catch (error) {
+                        console.error('Push subscription error:', error);
+                    }
+                }
+
+                function urlBase64ToUint8Array(base64String) {
+                    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+                    const base64 = (base64String + padding)
+                        .replace(/-/g, '+')
+                        .replace(/_/g, '/');
+                    
+                    const rawData = window.atob(base64);
+                    const outputArray = new Uint8Array(rawData.length);
+                    
+                    for (let i = 0; i < rawData.length; ++i) {
+                        outputArray[i] = rawData.charCodeAt(i);
+                    }
+                    return outputArray;
+                }
+
+                // Cache API responses for offline access
+                async function cacheApiResponse(url, data) {
+                    const cache = await caches.open('ali-safi-dynamic-v1');
+                    const response = new Response(JSON.stringify(data), {
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    await cache.put(url, response);
+                }
+
+                // Export for use in other scripts
+                window.cacheApiResponse = cacheApiResponse;
+                window.subscribeToPushNotifications = subscribeToPushNotifications;
+            </script>
     </body>
 </html>
