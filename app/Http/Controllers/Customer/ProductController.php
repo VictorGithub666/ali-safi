@@ -129,4 +129,111 @@ class ProductController extends Controller
             'products' => $products,
         ]);
     }
+
+    /**
+     * Get shops within 1km radius
+     */
+    public function getNearbyShops(Request $request)
+    {
+        try {
+            $request->validate([
+                'latitude' => 'required|numeric|between:-90,90',
+                'longitude' => 'required|numeric|between:-180,180',
+            ]);
+
+            $latitude = $request->latitude;
+            $longitude = $request->longitude;
+
+            // Get vendors within 1km radius using Haversine formula
+            $vendors = Vendor::where('is_open', true)
+                ->where('is_verified', true)
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->selectRaw("*, 
+                    (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * 
+                    cos(radians(longitude) - radians(?)) + 
+                    sin(radians(?)) * sin(radians(latitude)))) AS distance", 
+                    [$latitude, $longitude, $latitude])
+                ->having('distance', '<=', 1) // 1km radius
+                ->orderBy('distance')
+                ->get();
+
+            // Always return JSON for AJAX requests
+            if ($request->ajax() || $request->wantsJson()) {
+                // Store nearby info in session temporarily
+                session()->flash('nearby_search', true);
+                session()->flash('nearby_count', $vendors->count());
+                
+                return response()->json([
+                    'success' => true,
+                    'vendor_count' => $vendors->count(),
+                    'message' => $vendors->count() . ' shops found within 1km of your location!',
+                    'redirect_url' => route('customer.products.index', [
+                        'nearby' => 1,
+                        'lat' => $latitude,
+                        'lng' => $longitude
+                    ])
+                ]);
+            }
+
+            // For non-AJAX requests, proceed with normal view
+            $vendorIds = $vendors->pluck('id');
+            
+            $products = Product::where('is_active', true)
+                ->whereHas('vendors', function($q) use ($vendorIds) {
+                    $q->whereIn('vendor_id', $vendorIds)
+                    ->where('is_open', true);
+                })
+                ->with(['vendors' => function($q) use ($vendorIds) {
+                    $q->whereIn('vendor_id', $vendorIds);
+                }])
+                ->paginate(12);
+
+            foreach ($products as $product) {
+                $vendor = $product->vendors->first();
+                if ($vendor) {
+                    $product->customer_price = $product->getCustomerPriceForVendor($vendor->id);
+                    $product->vendor_id_for_price = $vendor->id;
+                } else {
+                    $product->customer_price = $product->final_price;
+                    $product->vendor_id_for_price = null;
+                }
+            }
+
+            $categories = Category::where('is_active', true)->get();
+
+            return view('customer.products.index', [
+                'products' => $products,
+                'categories' => $categories,
+                'selectedCategory' => null,
+                'searchQuery' => null,
+                'nearbyOnly' => true,
+                'nearbyVendors' => $vendors,
+                'userLat' => $latitude,
+                'userLng' => $longitude,
+            ]);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid coordinates provided.',
+                    'errors' => $e->errors()
+                ], 422);
+            }
+            throw $e;
+            
+        } catch (\Exception $e) {
+            \Log::error('Nearby shops error: ' . $e->getMessage());
+            
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to find nearby shops. Please try again.'
+                ], 500);
+            }
+            
+            return back()->with('error', 'Failed to find nearby shops. Please try again.');
+        }
+    }
 }

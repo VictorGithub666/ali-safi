@@ -36,6 +36,27 @@
         </div>
     </div>
 
+    <!-- Nearby Shops Banner -->
+    @if(isset($nearbyOnly) && $nearbyOnly)
+    <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-geo-alt-fill me-2"></i>
+                <strong>Showing shops within 1km of your location!</strong>
+                @if(isset($nearbyVendors))
+                    <span class="badge bg-light text-dark ms-2">{{ $nearbyVendors->count() }} shops found</span>
+                @endif
+            </div>
+            <div>
+                <a href="{{ route('customer.products.index') }}" class="btn btn-sm btn-outline-success">
+                    <i class="bi bi-x-circle"></i> View All Shops
+                </a>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <!-- Categories Filter -->
     <div class="row mb-4">
         <div class="col-12">

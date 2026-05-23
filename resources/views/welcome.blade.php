@@ -116,4 +116,187 @@
         </div>
     </div>
 </section>
+
+<!-- Nearby Shops Modal -->
+@include('customer.partials.nearby-modal')
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if we should show the modal
+    @auth
+        @if(Auth::user()->user_type === 'customer')
+            // Check if user has already used nearby feature
+            const hasUsedNearby = localStorage.getItem('nearbyUsed');
+            const lastDismissed = localStorage.getItem('nearbyModalDismissed');
+            const currentTime = Date.now();
+            
+            // Show if never used nearby, never dismissed, or dismissed more than 7 days ago
+            if (!hasUsedNearby && (!lastDismissed || (currentTime - parseInt(lastDismissed)) > 7 * 24 * 60 * 60 * 1000)) {
+                setTimeout(function() {
+                    const modal = new bootstrap.Modal(document.getElementById('nearbyShopsModal'));
+                    modal.show();
+                }, 1500);
+            }
+        @endif
+    @endauth
+    
+    // Handle Allow Location button
+    const allowBtn = document.getElementById('allowLocationBtn');
+    const loadingState = document.getElementById('locationLoadingState');
+    const statusDiv = document.getElementById('locationStatus');
+    const statusText = document.getElementById('locationStatusText');
+    
+    if (allowBtn) {
+        allowBtn.addEventListener('click', function() {
+            getLocation();
+        });
+    }
+    
+    // Store dismissal time when modal is closed
+    const modalElement = document.getElementById('nearbyShopsModal');
+    if (modalElement) {
+        modalElement.addEventListener('hidden.bs.modal', function() {
+            localStorage.setItem('nearbyModalDismissed', Date.now().toString());
+        });
+    }
+    
+    // Handle dismiss button
+    const dismissBtn = document.getElementById('dismissModalBtn');
+    if (dismissBtn) {
+        dismissBtn.addEventListener('click', function() {
+            localStorage.setItem('nearbyModalDismissed', Date.now().toString());
+        });
+    }
+    
+    function getLocation() {
+        if (!navigator.geolocation) {
+            showStatus('Geolocation is not supported by your browser', 'danger');
+            return;
+        }
+        
+        // Show loading state
+        allowBtn.style.display = 'none';
+        if (dismissBtn) dismissBtn.style.display = 'none';
+        loadingState.style.display = 'block';
+        statusDiv.style.display = 'none';
+        
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                
+                // Send location to server to find nearby shops
+                findNearbyShops(lat, lng);
+            },
+            function(error) {
+                loadingState.style.display = 'none';
+                allowBtn.style.display = 'block';
+                if (dismissBtn) dismissBtn.style.display = 'block';
+                
+                let errorMsg = '';
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMsg = 'Location permission denied. Please enable location access in your browser settings to find nearby shops.';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMsg = 'Location information is unavailable. Please check your GPS.';
+                        break;
+                    case error.TIMEOUT:
+                        errorMsg = 'Location request timed out. Please try again.';
+                        break;
+                    default:
+                        errorMsg = 'An error occurred while getting your location.';
+                }
+                
+                showStatus(errorMsg, 'danger');
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
+        );
+    }
+    
+    function findNearbyShops(lat, lng) {
+        // Get CSRF token from meta tag
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || 
+                         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
+        console.log('Sending request to find nearby shops...');
+        console.log('Latitude:', lat, 'Longitude:', lng);
+        
+        fetch('{{ route("customer.products.nearby") }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lng
+            })
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('Error response:', text);
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            if (data.success) {
+                // Mark that user has used nearby feature
+                localStorage.setItem('nearbyUsed', 'true');
+                
+                // Close the modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('nearbyShopsModal'));
+                if (modal) {
+                    modal.hide();
+                }
+                
+                // Show success message
+                showStatus(data.message || 'Found nearby shops! Redirecting...', 'success');
+                
+                // Redirect after a short delay
+                setTimeout(() => {
+                    window.location.href = data.redirect_url;
+                }, 1000);
+            } else {
+                showStatus(data.message || 'Failed to find nearby shops', 'danger');
+                loadingState.style.display = 'none';
+                allowBtn.style.display = 'block';
+                if (dismissBtn) dismissBtn.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+            showStatus('An error occurred. Please try again.', 'danger');
+            loadingState.style.display = 'none';
+            allowBtn.style.display = 'block';
+            if (dismissBtn) dismissBtn.style.display = 'block';
+        });
+    }
+    
+    function showStatus(message, type) {
+        statusText.textContent = message;
+        statusDiv.className = 'alert alert-' + type + ' small';
+        statusDiv.style.display = 'block';
+        
+        // Auto-hide after 5 seconds for success messages
+        if (type === 'success') {
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+    }
+});
+</script>
 @endsection

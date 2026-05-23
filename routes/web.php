@@ -50,6 +50,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         
         Route::get('/products', [ProductController::class, 'index'])->name('products.index');
         Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
+        // Inside customer routes group - add this line
+        Route::post('/nearby-shops', [ProductController::class, 'getNearbyShops'])->name('products.nearby');
         
         Route::get('/cart', [CartController::class, 'index'])->name('cart');
         Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
@@ -119,6 +121,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware(['user.type:admin'])->prefix('admin')->name('admin.')->group(function () {
         // Dashboard
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
+
+        
 
         // Orders Management
         Route::get('/orders', [AdminController::class, 'orders'])->name('orders');
