@@ -6,6 +6,19 @@
         <i class="bi bi-shop"></i> Vendor Dashboard
     </h2>
 
+    @if(session()->has('whatsapp_order_link_' . ($order->id ?? '')))
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-whatsapp me-2"></i>
+        <strong>New Order Alert!</strong> 
+        <a href="{{ session('whatsapp_order_link_' . $order->id) }}" 
+        target="_blank" 
+        class="alert-link">
+            Click here to view order on WhatsApp
+        </a>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
+
     <div class="row g-4 mb-5">
         <div class="col-md-3">
             <div class="card text-center">

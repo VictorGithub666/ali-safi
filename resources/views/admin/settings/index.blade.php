@@ -124,6 +124,24 @@
                             <small class="text-muted">Maximum distance for delivery availability</small>
                         </div>
 
+                        <!-- Add this after the existing settings -->
+                        <div class="mb-3">
+                            <label for="admin_whatsapp_numbers" class="form-label">Admin WhatsApp Numbers</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
+                                <input type="text" 
+                                    class="form-control @error('admin_whatsapp_numbers') is-invalid @enderror" 
+                                    id="admin_whatsapp_numbers" 
+                                    name="admin_whatsapp_numbers" 
+                                    value="{{ old('admin_whatsapp_numbers', \App\Models\Setting::get('admin_whatsapp_numbers', '')) }}" 
+                                    placeholder="254712345678,254798765432">
+                            </div>
+                            <small class="text-muted">Comma-separated list of admin WhatsApp numbers (include country code 254)</small>
+                            @error('admin_whatsapp_numbers')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
                                 <i class="bi bi-save"></i> Save Settings

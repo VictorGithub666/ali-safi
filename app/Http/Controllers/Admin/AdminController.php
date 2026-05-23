@@ -172,6 +172,7 @@ class AdminController extends Controller
             'base_delivery_fee' => 'required|numeric|min:0',
             'per_km_delivery_fee' => 'required|numeric|min:0',
             'vendor_commission_percentage' => 'required|numeric|min:0|max:100',
+            'admin_whatsapp_numbers' => 'nullable|string', // Add this line
         ]);
         
         foreach ($request->all() as $key => $value) {

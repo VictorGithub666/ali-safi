@@ -9,13 +9,67 @@ class WhatsAppService
 {
     protected $apiUrl;
     protected $apiKey;
+    protected $instanceId; // For WhatsApp Business API or services like Ultramsg, WATI, etc.
 
     public function __construct()
     {
-        // You can use services like Twilio, WhatsApp Business API, or UltraMsg
-        // For this example, we'll use a generic API structure
+        // Configuration for WhatsApp Business API or third-party service
         $this->apiUrl = env('WHATSAPP_API_URL', 'https://api.whatsapp.com/send');
         $this->apiKey = env('WHATSAPP_API_KEY', '');
+        $this->instanceId = env('WHATSAPP_INSTANCE_ID', '');
+    }
+
+    /**
+     * Send WhatsApp message directly via API (if configured)
+     */
+    public function sendMessage($phoneNumber, $message)
+    {
+        $phone = $this->formatPhoneNumber($phoneNumber);
+        
+        // Example using Ultramsg API (popular WhatsApp gateway)
+        if ($this->apiUrl && $this->apiKey && $this->instanceId) {
+            return $this->sendViaUltramsg($phone, $message);
+        }
+        
+        // Fallback to generating link
+        return $this->generateWhatsAppLink($phone, $message);
+    }
+    
+    /**
+     * Send via Ultramsg API
+     */
+    protected function sendViaUltramsg($phone, $message)
+    {
+        try {
+            $response = Http::post($this->apiUrl, [
+                'token' => $this->apiKey,
+                'to' => $phone,
+                'body' => $message,
+                'priority' => 1,
+                'referenceId' => ''
+            ]);
+            
+            if ($response->successful() && isset($response['sent'])) {
+                Log::info('WhatsApp message sent successfully via Ultramsg', [
+                    'phone' => $phone,
+                    'response' => $response->json()
+                ]);
+                return ['success' => true, 'data' => $response->json()];
+            }
+            
+            Log::error('Ultramsg API error', [
+                'phone' => $phone,
+                'response' => $response->body()
+            ]);
+            return ['success' => false, 'error' => $response->body()];
+            
+        } catch (\Exception $e) {
+            Log::error('WhatsApp send failed', [
+                'phone' => $phone,
+                'error' => $e->getMessage()
+            ]);
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
     }
 
     /**
@@ -24,14 +78,16 @@ class WhatsAppService
     public function sendOrderNotification($order, $vendorPhone)
     {
         $message = $this->formatOrderMessage($order);
-        
-        // Format phone number (remove any non-numeric characters and add country code if needed)
         $phone = $this->formatPhoneNumber($vendorPhone);
         
-        // Method 1: Using WhatsApp Web API (requires business account)
-        // return $this->sendViaAPI($phone, $message);
+        // Try to send via API first
+        $result = $this->sendMessage($phone, $message);
         
-        // Method 2: Using WhatsApp Web link (opens in browser - simpler)
+        if ($result['success']) {
+            return $result;
+        }
+        
+        // Fallback to WhatsApp Web link
         return $this->generateWhatsAppLink($phone, $message);
     }
 
@@ -41,7 +97,8 @@ class WhatsAppService
     protected function formatOrderMessage($order)
     {
         $items = $order->items->map(function($item) {
-            return "• {$item->quantity}x {$item->product->name} - KES " . number_format($item->unit_price * $item->quantity, 2);
+            $sizeText = $item->size ? " ({$item->size})" : "";
+            return "• {$item->quantity}x {$item->product->name}{$sizeText} - KES " . number_format($item->unit_price * $item->quantity, 2);
         })->implode("\n");
 
         $message = "*NEW ORDER #{$order->order_number}*\n\n";
@@ -85,47 +142,11 @@ class WhatsAppService
     }
 
     /**
-     * Generate WhatsApp web link
+     * Generate WhatsApp web link (works without API)
      */
     public function generateWhatsAppLink($phone, $message)
     {
         $encodedMessage = urlencode($message);
         return "https://wa.me/{$phone}?text={$encodedMessage}";
-    }
-
-    /**
-     * Send via WhatsApp Business API (requires business account)
-     */
-    protected function sendViaAPI($phone, $message)
-    {
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])->post($this->apiUrl, [
-                'to' => $phone,
-                'message' => $message,
-            ]);
-
-            if ($response->successful()) {
-                Log::info('WhatsApp notification sent successfully', [
-                    'phone' => $phone,
-                    'response' => $response->json()
-                ]);
-                return true;
-            }
-
-            Log::error('WhatsApp API error', [
-                'phone' => $phone,
-                'response' => $response->body()
-            ]);
-            return false;
-        } catch (\Exception $e) {
-            Log::error('WhatsApp notification failed', [
-                'phone' => $phone,
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
     }
 }

@@ -6,6 +6,19 @@
         <i class="bi bi-speedometer2"></i> Admin Dashboard
     </h2>
 
+    @if(session()->has('admin_notifications'))
+    @foreach(session('admin_notifications') as $notification)
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <i class="bi bi-whatsapp me-2"></i>
+        <strong>New Order Alert!</strong> 
+        <a href="{{ $notification }}" target="_blank" class="alert-link">
+            Click here to view order details on WhatsApp
+        </a>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endforeach
+    @endif
+
     <div class="row g-4 mb-5">
         <div class="col-md-3">
             <div class="card text-center">

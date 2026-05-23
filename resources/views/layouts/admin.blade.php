@@ -386,6 +386,25 @@
         </a>
         
         <div class="nav-label px-3 mt-3 mb-2">
+            <small class="text-white-50 sidebar-text">PAYMENTS</small>
+        </div>
+        
+        <a href="{{ route('admin.mpesa.dashboard') }}" class="nav-link {{ request()->routeIs('admin.mpesa.dashboard') ? 'active' : '' }}">
+            <i class="bi bi-cash-coin"></i>
+            <span class="sidebar-text">M-Pesa Dashboard</span>
+        </a>
+        
+        <a href="{{ route('admin.mpesa.index') }}" class="nav-link {{ request()->routeIs('admin.mpesa.index') ? 'active' : '' }}">
+            <i class="bi bi-receipt"></i>
+            <span class="sidebar-text">Transactions</span>
+        </a>
+        
+        <a href="{{ route('admin.mpesa.notifications') }}" class="nav-link {{ request()->routeIs('admin.mpesa.notifications') ? 'active' : '' }}">
+            <i class="bi bi-bell"></i>
+            <span class="sidebar-text">Notifications</span>
+        </a>
+        
+        <div class="nav-label px-3 mt-3 mb-2">
             <small class="text-white-50 sidebar-text">SYSTEM</small>
         </div>
         

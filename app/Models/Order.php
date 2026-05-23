@@ -119,4 +119,17 @@ class Order extends Model
     {
         return $this->hasOne(AdminCommission::class);
     }
+
+    public function mpesaTransactions()
+    {
+        return $this->hasMany(MpesaTransaction::class);
+    }
+
+    /**
+     * Get the latest M-Pesa transaction
+     */
+    public function latestMpesaTransaction()
+    {
+        return $this->mpesaTransactions()->latest()->first();
+    }
 }

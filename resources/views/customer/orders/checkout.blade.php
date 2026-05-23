@@ -218,16 +218,37 @@
                     <h5 class="card-title fw-bold mb-0">Payment Method</h5>
                 </div>
                 <div class="card-body">
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="radio" name="payment" id="payment1" checked>
-                        <label class="form-check-label" for="payment1">
-                            <div class="fw-bold">M-Pesa</div>
-                            <div class="text-muted small">Pay via M-Pesa on delivery or online</div>
+                    <!-- M-Pesa Payment Option -->
+                    <div class="form-check mb-4">
+                        <input class="form-check-input" type="radio" name="payment" id="payment1" checked value="mpesa">
+                        <label class="form-check-label w-100" for="payment1">
+                            <div class="fw-bold d-flex align-items-center gap-2">
+                                <i class="bi bi-phone"></i> M-Pesa
+                            </div>
+                            <div class="text-muted small">Instant payment via M-Pesa STK Push</div>
                         </label>
                     </div>
 
+                    <!-- M-Pesa Phone Number Section -->
+                    <div id="mpesaPhoneSection" class="alert alert-info mb-3">
+                        <div class="mb-3">
+                            <label for="mpesaPhone" class="form-label">M-Pesa Phone Number</label>
+                            <input type="tel" class="form-control" id="mpesaPhone" 
+                                   placeholder="254712345678 or 0712345678" 
+                                   value="{{ auth()->user()->phone ?? '' }}"
+                                   pattern="^(254|0)?[7][0-9]{8}$"
+                                   required>
+                            <small class="form-text text-muted d-block mt-2">
+                                <i class="bi bi-info-circle"></i> Enter your Safaricom M-Pesa phone number. You'll receive an STK Push to complete payment.
+                            </small>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Other Payment Options -->
                     <div class="form-check mb-3">
-                        <input class="form-check-input" type="radio" name="payment" id="payment2">
+                        <input class="form-check-input" type="radio" name="payment" id="payment2" value="bank_transfer">
                         <label class="form-check-label" for="payment2">
                             <div class="fw-bold">Bank Transfer</div>
                             <div class="text-muted small">Direct bank transfer (24-48 hours)</div>
@@ -235,7 +256,7 @@
                     </div>
 
                     <div class="form-check mb-3">
-                        <input class="form-check-input" type="radio" name="payment" id="payment3">
+                        <input class="form-check-input" type="radio" name="payment" id="payment3" value="card">
                         <label class="form-check-label" for="payment3">
                             <div class="fw-bold">Credit/Debit Card</div>
                             <div class="text-muted small">Visa, Mastercard, American Express</div>
@@ -243,7 +264,7 @@
                     </div>
 
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="payment" id="payment4">
+                        <input class="form-check-input" type="radio" name="payment" id="payment4" value="cod">
                         <label class="form-check-label" for="payment4">
                             <div class="fw-bold">Pay on Delivery (COD)</div>
                             <div class="text-muted small">Cash payment when order arrives</div>
@@ -304,9 +325,9 @@
 
                     <!-- Place Order Button -->
                     <div class="d-grid mb-3">
-                        <a href="{{ route('customer.orders.confirm') }}" class="btn text-white" style="background-color: var(--primary-green);">
+                        <button type="submit" class="btn text-white" style="background-color: var(--primary-green);" id="placeOrderBtn">
                             <i class="bi bi-check-circle me-2"></i> Place Order
-                        </a>
+                        </button>
                     </div>
 
                     <!-- Continue Shopping -->
@@ -328,4 +349,166 @@
         </div>
     </div>
 </div>
+
+<!-- M-Pesa Payment Modal -->
+<div class="modal fade" id="mpesaPaymentModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-white border-bottom">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-phone me-2" style="color: var(--primary-green);"></i>M-Pesa Payment
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div id="mpesaStatus" style="display: none;">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-success mb-3" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <h6 class="fw-bold">Processing Payment</h6>
+                        <p class="text-muted">Check your phone for the M-Pesa prompt...</p>
+                        <p class="small text-muted">
+                            <strong id="mpesaPhoneDisplay"></strong><br>
+                            Amount: <strong id="mpesaAmountDisplay"></strong>
+                        </p>
+                    </div>
+                </div>
+                <div id="mpesaForm">
+                    <div class="mb-3">
+                        <label class="form-label">M-Pesa Phone Number</label>
+                        <input type="tel" class="form-control form-control-lg" id="finalMpesaPhone"
+                               placeholder="254712345678" required>
+                        <small class="form-text text-muted">Enter the phone number that has M-Pesa registered</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelPaymentBtn">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmMpesaBtn" onclick="initiateMpesa()">
+                    <i class="bi bi-phone me-1"></i> Send M-Pesa Prompt
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle M-Pesa phone section based on payment method
+    document.querySelectorAll('input[name="payment"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const mpesaSection = document.getElementById('mpesaPhoneSection');
+            if (this.value === 'mpesa') {
+                mpesaSection.style.display = 'block';
+            } else {
+                mpesaSection.style.display = 'none';
+            }
+        });
+    });
+
+    // Initialize on page load
+    const paymentMethods = document.querySelectorAll('input[name="payment"]');
+    if (paymentMethods[0].checked) {
+        document.getElementById('mpesaPhoneSection').style.display = 'block';
+    }
+
+    // Handle Place Order button
+    document.getElementById('placeOrderBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        const selectedPayment = document.querySelector('input[name="payment"]:checked');
+        
+        if (selectedPayment.value === 'mpesa') {
+            const mpesaPhone = document.getElementById('mpesaPhone').value.trim();
+            
+            if (!mpesaPhone) {
+                alert('Please enter your M-Pesa phone number');
+                return;
+            }
+            
+            // Show M-Pesa modal
+            document.getElementById('mpesaPhoneDisplay').textContent = mpesaPhone;
+            document.getElementById('mpesaAmountDisplay').textContent = 'KES 3,098';
+            document.getElementById('finalMpesaPhone').value = mpesaPhone;
+            
+            const mpesaModal = new bootstrap.Modal(document.getElementById('mpesaPaymentModal'));
+            mpesaModal.show();
+        } else {
+            // Handle other payment methods
+            document.querySelector('form').submit();
+        }
+    });
+
+    // Initiate M-Pesa payment
+    async function initiateMpesa() {
+        const phone = document.getElementById('finalMpesaPhone').value;
+        const confirmBtn = document.getElementById('confirmMpesaBtn');
+        
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processing...';
+        
+        try {
+            // Submit the order form first to create the order
+            const formData = new FormData(document.querySelector('form'));
+            
+            // The form submission will be handled after showing M-Pesa status
+            document.getElementById('mpesaForm').style.display = 'none';
+            document.getElementById('mpesaStatus').style.display = 'block';
+            
+            // You can add AJAX request here to initiate M-Pesa payment
+            // const response = await fetch('/customer/orders/{{ $order->id }}/mpesa/initiate', {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //         'X-CSRF-TOKEN': document.querySelector('[name="_token"]').value
+            //     },
+            //     body: JSON.stringify({ phone_number: phone })
+            // });
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error processing payment. Please try again.');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="bi bi-phone me-1"></i> Send M-Pesa Prompt';
+        }
+    }
+
+    // Format phone number input
+    document.getElementById('mpesaPhone').addEventListener('input', function() {
+        let value = this.value.replace(/\D/g, '');
+        
+        // Add 254 prefix if starts with 0 or 7
+        if (value.length > 0) {
+            if (value.startsWith('0')) {
+                value = '254' + value.substring(1);
+            } else if (value.startsWith('7')) {
+                value = '254' + value;
+            }
+        }
+        
+        this.value = value;
+    });
+
+    document.getElementById('finalMpesaPhone').addEventListener('input', function() {
+        let value = this.value.replace(/\D/g, '');
+        
+        if (value.length > 0) {
+            if (value.startsWith('0')) {
+                value = '254' + value.substring(1);
+            } else if (value.startsWith('7')) {
+                value = '254' + value;
+            }
+        }
+        
+        this.value = value;
+    });
+</script>
+
+<style>
+    #mpesaPhoneSection {
+        background-color: #f0f9ff;
+        border: 1px solid #d4e3f7;
+        border-radius: 10px;
+        padding: 15px;
+    }
+</style>
 @endsection

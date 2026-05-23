@@ -15,9 +15,7 @@ use App\Http\Controllers\Admin\AdminVendorController;
 use App\Http\Controllers\Admin\AdminRiderController;
 use App\Http\Controllers\Admin\AdminPriceController;
 use App\Http\Controllers\Admin\AdminFinanceController;
-use App\Http\Controllers\Admin\AdminOrderAssignmentController;
-use App\Http\Controllers\Auth\SocialiteController;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\AdminMpesaController;
 
 // Public routes
 Route::get('/', function () {
@@ -66,6 +64,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/orders/{order}/track', [CustomerOrderController::class, 'track'])->name('orders.track');
         Route::get('/orders/{order}/rider-location', [CustomerOrderController::class, 'getRiderLocation'])->name('orders.rider-location');
         Route::get('/orders/{order}/invoice', [CustomerOrderController::class, 'downloadInvoice'])->name('orders.invoice');
+        
+        // M-Pesa Payment Routes
+        Route::post('/orders/{order}/mpesa/initiate', [\App\Http\Controllers\PaymentController::class, 'initiateMpesaPayment'])->name('mpesa.initiate');
+        Route::get('/orders/{order}/mpesa/status', [\App\Http\Controllers\PaymentController::class, 'getPaymentStatus'])->name('mpesa.status');
+        Route::post('/orders/{order}/mpesa/resend', [\App\Http\Controllers\PaymentController::class, 'resendMpesaPrompt'])->name('mpesa.resend');
     });
     
     // Vendor routes
@@ -161,6 +164,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/finances/vendor-settlement', [AdminFinanceController::class, 'vendorSettlement'])->name('finances.vendor-settlement');
         Route::get('/finances/sync', [AdminFinanceController::class, 'syncOrders'])->name('finances.sync');
         Route::get('/finances/download-simple-report', [AdminFinanceController::class, 'downloadSimpleReport'])->name('finances.download-simple-report');
+        
+        // M-Pesa Payment Management
+        Route::get('/mpesa/dashboard', [AdminMpesaController::class, 'dashboard'])->name('mpesa.dashboard');
+        Route::get('/mpesa/transactions', [AdminMpesaController::class, 'index'])->name('mpesa.index');
+        Route::get('/mpesa/transactions/{mpesaTransaction}', [AdminMpesaController::class, 'show'])->name('mpesa.show');
+        Route::get('/mpesa/notifications', [AdminMpesaController::class, 'notifications'])->name('mpesa.notifications');
+        Route::get('/mpesa/export', [AdminMpesaController::class, 'export'])->name('mpesa.export');
+        Route::post('/mpesa/transactions/{mpesaTransaction}/confirm', [AdminMpesaController::class, 'confirmPayment'])->name('mpesa.confirm');
+        Route::post('/mpesa/transactions/{mpesaTransaction}/resend-callback', [AdminMpesaController::class, 'resendCallback'])->name('mpesa.resend-callback');
         
         // Order Assignment (Rider Assignment)
         Route::get('/orders/assignment', [AdminOrderAssignmentController::class, 'index'])->name('orders.assignment');
