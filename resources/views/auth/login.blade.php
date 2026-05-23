@@ -70,6 +70,21 @@
                             </div>
                         </div>
                     </form>
+
+                    <!-- Google Login Button -->
+                    <div class="row mt-4">
+                        <div class="col-md-8 offset-md-4">
+                            <hr class="mb-4">
+                            <div class="d-grid gap-2">
+                                <a href="{{ route('google.login') }}" class="btn btn-outline-danger" style="background-color: #fff;">
+                                    <i class="bi bi-google"></i> Login with Google
+                                </a>
+                            </div>
+                            <p class="text-muted text-center mt-3 small">
+                                By continuing with Google, you agree to our Terms of Service and Privacy Policy.
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

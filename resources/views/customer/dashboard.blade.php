@@ -6,6 +6,15 @@
         <i class="bi bi-speedometer2"></i> Customer Dashboard
     </h2>
 
+    @if(auth()->user()->google_id)
+    <div class="alert alert-info alert-dismissible fade show mb-4" role="alert">
+        <i class="bi bi-google me-2"></i>
+        <strong>Welcome Google User!</strong> Please complete your profile by adding your phone number and address.
+        <a href="{{ route('profile.edit') }}" class="alert-link">Complete Profile</a>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    @endif
+
     <div class="row g-4 mb-5">
         <div class="col-md-3">
             <div class="card text-center">

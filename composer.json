@@ -10,7 +10,7 @@
         "barryvdh/laravel-dompdf": "^3.1",
         "intervention/image": "^4.0",
         "laravel/framework": "^13.0",
-        "laravel/socialite": "^5.26",
+        "laravel/socialite": "^5.27",
         "laravel/tinker": "^3.0",
         "laravel/ui": "*",
         "maatwebsite/excel": "^1.1",

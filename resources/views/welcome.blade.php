@@ -23,6 +23,9 @@
                         <a href="{{ route('login') }}" class="btn btn-light btn-lg">
                             <i class="bi bi-box-arrow-in-right"></i> Login
                         </a>
+                        <a href="{{ route('google.login') }}" class="btn btn-outline-light btn-lg">
+                            <i class="bi bi-google"></i> Google Login
+                        </a>
                         <a href="{{ route('register') }}" class="btn btn-outline-light btn-lg">
                             <i class="bi bi-person-plus"></i> Sign Up
                         </a>
