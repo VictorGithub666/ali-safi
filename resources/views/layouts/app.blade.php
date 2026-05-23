@@ -313,21 +313,27 @@
                         <h6>Quick Links</h6>
                         <ul class="list-unstyled small">
                             <li><a href="{{ route('home') }}">Home</a></li>
-                            <li><a href="#">About</a></li>
-                            <li><a href="#">Contact</a></li>
+                            <li><a href="#">About Us</a></li>
+                            <li><a href="#">Contact Us</a></li>
+                            <li><a href="#">Terms & Conditions</a></li>
+                            <li><a href="#">Privacy Policy</a></li>
                         </ul>
                     </div>
                     <div class="col-md-4">
-                        <h6>Support</h6>
+                        <h6>Contact Us</h6>
+                        <p class="small mb-1">
+                            <i class="bi bi-envelope-fill me-2"></i>
+                            <a href="mailto:alisafisolutionsltd@gmail.com" class="text-white text-decoration-none">alisafisolutionsltd@gmail.com</a>
+                        </p>
                         <p class="small mb-0">
-                            📧 support@ali-safi.com<br>
-                            📱 +254 700 000 000
+                            <i class="bi bi-telephone-fill me-2"></i>
+                            <a href="tel:+254110007835" class="text-white text-decoration-none">+254 110 007 835</a>
                         </p>
                     </div>
                 </div>
                 <hr style="border-color: rgba(255,255,255,0.1); margin: 1rem 0;">
                 <div class="text-center small">
-                    <p class="mb-0">&copy; 2026 Ali-Safi. All rights reserved.</p>
+                    <p class="mb-0">&copy; {{ date('Y') }} Ali-Safi Solutions Ltd. All rights reserved.</p>
                 </div>
             </div>
         </footer>
