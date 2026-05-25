@@ -158,11 +158,7 @@
 
             <!-- Inventory -->
             <div class="card mb-3">
-                <div class="card-header bg-light">
-                    <h6 class="mb-0">
-                        <i class="bi bi-boxes"></i> Inventory
-                    </h6>
-                </div>
+                
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-6 mb-3">

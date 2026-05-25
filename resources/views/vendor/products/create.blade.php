@@ -78,7 +78,7 @@
                         </div>
 
                         <!-- Custom Price (Optional) -->
-                        <div class="mb-3">
+                        <!-- <div class="mb-3">
                             <label for="custom_price" class="form-label">Custom Price (KES) <span class="text-muted">(Optional)</span></label>
                             <input type="number" step="0.01" class="form-control @error('custom_price') is-invalid @enderror" 
                                    id="custom_price" name="custom_price" placeholder="Leave empty to use default price" 
@@ -87,7 +87,7 @@
                             @error('custom_price')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
-                        </div>
+                        </div> -->
 
                         <!-- Product Image -->
                         <div class="mb-3">
